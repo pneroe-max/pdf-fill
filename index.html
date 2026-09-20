@@ -131,6 +131,7 @@
     padding:8px 12px;border-radius:999px;background:var(--superficie2);
     border:1px solid var(--bordo);font-size:14px;
   }
+  .chip.vuoto{opacity:.55;border-style:dashed}
   .chip.attivo{background:var(--penna);border-color:var(--penna);color:#04131f;font-weight:600}
   .righe{display:flex;gap:10px;margin-top:16px}
   .righe>*{flex:1}
@@ -236,6 +237,7 @@ const CAMPI_ANAGRAFICA = [
   {chiave: "data_nascita", etichetta: "Data di nascita"},
   {chiave: "luogo_nascita", etichetta: "Luogo di nascita"},
   {chiave: "indirizzo", etichetta: "Indirizzo"},
+  {chiave: "civico", etichetta: "Numero civico"},
   {chiave: "cap", etichetta: "CAP"},
   {chiave: "citta", etichetta: "Città"},
   {chiave: "provincia", etichetta: "Provincia"},
@@ -249,10 +251,12 @@ const CAMPI_ANAGRAFICA = [
 
 // ordine: le regole più specifiche per prime
 const REGOLE = [
+  ["__firma__", /(^|\s)(firma|dichiarante|sottoscrizione)\b/],
   ["nome_cognome", /(nome\s*e\s*cognome|cognome\s*e\s*nome|nominativo|intestatar|richiedent|sottoscritt)/],
   ["cf", /(codice\s*fiscale|cod\.?\s*fisc|\bc\.?\s*f\.?\b|fiscal)/],
   ["data_nascita", /(data\s*(di\s*)?nascita|nato\s*il|nata\s*il|birth\s*date|\bdob\b)/],
-  ["luogo_nascita", /(luogo\s*(di\s*)?nascita|nato\s*a|nata\s*a|comune\s*di\s*nascita|birthplace)/],
+  ["luogo_nascita", /(luogo\s*(di\s*)?nascita|comune\s*di\s*nascita|nat[oa](\s*\/\s*[oa])?\s+a\b|birthplace)/],
+  ["citta", /(resident[ei]\b|comune\s*di\s*residenza)/],
   ["cognome", /(cognome|surname|lastname|last_name|family)/],
   ["nome", /(\bnome\b|firstname|first_name|givenname|\bname\b)/],
   ["cap", /(\bcap\b|c\.a\.p|\bzip\b|postal)/],
@@ -264,8 +268,54 @@ const REGOLE = [
   ["documento", /(carta\s*d.?identit|documento|patente|passaporto)/],
   ["azienda", /(azienda|societ|ragione\s*sociale|ditta|impresa|company)/],
   ["luogo_firma", /(luogo\s*e\s*data)/],
+  ["civico", /^n\.?$/],
+  ["data_nascita", /^il$/],
   ["data_oggi", /(\bdata\b|\bdate\b|\bl[iì]\b)/],
 ];
+
+// ripulisce l'etichetta dai riempitivi grafici prima del confronto
+function pulisciEtichetta(t) {
+  return String(t || "").replace(/[_.\u2026]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// cerca l'etichetta stampata accanto a un campo rilevato e ne deduce il dato
+function chiaveDaEtichette(campo, voci) {
+  let sinistra = null, sotto = null, sopra = null;
+  for (const v of voci) {
+    const destra = v.x + v.w;
+    // stessa riga: l'etichetta puo' essere un blocco a se' oppure contenere gli underscore
+    if (Math.abs(v.y - campo.y) <= 6 && v.x <= campo.x + 8 && v.x >= campo.x - 260) {
+      let parte = v.testo;
+      if (destra > campo.x + 8 && v.w > 0) {
+        const fraz = Math.max(0, Math.min(1, (campo.x - v.x) / v.w));
+        let i = Math.round(fraz * v.testo.length);
+        while (i < v.testo.length && /[A-Za-z\u00C0-\u024F0-9]/.test(v.testo[i])) i++;
+        parte = v.testo.slice(0, i);
+      }
+      const pulito = pulisciEtichetta(parte);
+      if (pulito && (!sinistra || v.x > sinistra.x)) {
+        sinistra = {testo: pulito.split(" ").slice(-4).join(" "), x: v.x};
+      }
+    }
+    // didascalia sotto la riga, tipo "(comune di residenza)"
+    const dy = campo.y - v.y;
+    if (dy > 1 && dy < 18 && v.x < campo.x + campo.w && destra > campo.x && v.w < campo.w * 2.5) {
+      const pulito = pulisciEtichetta(v.testo);
+      if (pulito && (!sotto || dy < sotto.dy)) sotto = {testo: pulito, dy};
+    }
+    const su = v.y - campo.y;
+    if (su > 1 && su < 20 && v.x < campo.x + campo.w && destra > campo.x) {
+      const pulito = pulisciEtichetta(v.testo);
+      if (pulito && (!sopra || su < sopra.su)) sopra = {testo: pulito, su};
+    }
+  }
+  for (const c of [sinistra, sotto, sopra]) {
+    if (!c) continue;
+    const k = indovinaChiave(c.testo);
+    if (k) return k;
+  }
+  return null;
+}
 
 function indovinaChiave(nomeCampo) {
   const n = (nomeCampo || "").toLowerCase().replace(/[_\-.]+/g, " ");
@@ -389,25 +439,40 @@ function rilevaCampi(ctx, W, H, scala, altPag) {
     scuro[p] = (dati[i] * 0.299 + dati[i + 1] * 0.587 + dati[i + 2] * 0.114) < 145 ? 1 : 0;
   }
 
-  const minLen = Math.round(45 * scala);      // 45pt
+  const minLen = Math.round(36 * scala);              // 36pt: prende anche i campi "(prov.)"
   const maxSpessore = Math.max(3, Math.round(2.5 * scala));
+  const salto = Math.max(3, Math.round(4.5 * scala)); // unisce underscore spaziati e puntini
   const grezze = [];
 
-  for (let y = maxSpessore + 1; y < H - maxSpessore - 1; y++) {
+  for (let y = maxSpessore + 7; y < H - maxSpessore - 7; y++) {
     let x = 0;
     const base = y * W;
     while (x < W) {
       if (!scuro[base + x]) { x++; continue; }
       const inizio = x;
-      while (x < W && scuro[base + x]) x++;
-      const len = x - inizio;
+      let fine = x, inchiostro = 0;
+      while (x < W) {
+        if (scuro[base + x]) { fine = x + 1; inchiostro++; x++; continue; }
+        let g = 0;
+        while (x + g < W && !scuro[base + x + g] && g <= salto) g++;
+        if (g > salto) break;                          // buco troppo largo: la riga finisce qui
+        x += g;
+      }
+      const len = fine - inizio;
       if (len < minLen) continue;
-      // deve essere sottile: la riga sopra (a distanza maxSpessore+1) dev'essere chiara
-      const sopra = base - (maxSpessore + 1) * W;
-      let pieni = 0, letti = 0;
-      for (let i = inizio; i < x; i += 3) { letti++; if (scuro[sopra + i]) pieni++; }
-      if (letti && pieni / letti > 0.35) continue;
-      grezze.push({y, x0: inizio, x1: x, len});
+      if (inchiostro / len < 0.3) continue;            // troppo vuoto per essere una riga
+      // una riga da compilare e' sottile: se l'inchiostro si estende in verticale e' testo
+      let righeSporche = 0;
+      const raggio = maxSpessore + 6;
+      for (let dy = -raggio; dy <= raggio; dy++) {
+        const riga = base + dy * W;
+        if (riga < 0 || riga + W > W * H) continue;
+        let pieni = 0, letti = 0;
+        for (let i = inizio; i < fine; i += 3) { letti++; if (scuro[riga + i]) pieni++; }
+        if (letti && pieni / letti > 0.15) righeSporche++;
+      }
+      if (righeSporche > maxSpessore + 1) continue;
+      grezze.push({y, x0: inizio, x1: fine, len});
     }
   }
 
@@ -494,6 +559,7 @@ function Pagina({jsDoc, numero, campi, scelto, onScegli, onSposta, onNuovo, modo
   const foglio = useRef(null);
   const [vista, setVista] = useState(null);
   const trasc = useRef(null);
+  const mosso = useRef(false);
 
   useEffect(() => {
     let annullato = false;
@@ -545,10 +611,10 @@ function Pagina({jsDoc, numero, campi, scelto, onScegli, onSposta, onNuovo, modo
     if (t.maniglia) onSposta(t.id, {w: Math.max(14, t.w + dx)});
     else onSposta(t.id, {x: t.x + dx, y: t.y + dy});
   };
-  const suSuCampo = (e, campo) => {
+  const suSuCampo = () => {
     const t = trasc.current;
     trasc.current = null;
-    if (t && !t.mosso) onScegli(campo.id);
+    mosso.current = !!(t && t.mosso);
   };
 
   return (
@@ -566,18 +632,19 @@ function Pagina({jsDoc, numero, campi, scelto, onScegli, onSposta, onNuovo, modo
                  left: c.x * s, top: (H - c.y - c.h) * s,
                  width: Math.max(10, c.w * s), height: Math.max(10, c.h * s),
                }}
-               onClick={(e) => e.stopPropagation()}
+               onClick={(e) => { e.stopPropagation(); if (!mosso.current) onScegli(c.id); }}
                onPointerDown={(e) => giuSuCampo(e, c, false)}
                onPointerMove={muoviSuCampo}
-               onPointerUp={(e) => suSuCampo(e, c)}>
+               onPointerUp={suSuCampo}>
             {firma && <img src={firma.png} alt="" />}
             {!firma && c.tipo === "check" && c.valore && <span className="spunta">✕</span>}
             {!firma && c.tipo !== "check" && !!c.valore &&
               <span className="val" style={{fontSize: Math.max(7, Math.min(c.h * 0.72, 12) * s)}}>{c.valore}</span>}
             {scelto === c.id && <span className="maniglia"
+              onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => giuSuCampo(e, c, true)}
               onPointerMove={muoviSuCampo}
-              onPointerUp={(e) => suSuCampo(e, c)}></span>}
+              onPointerUp={suSuCampo}></span>}
           </div>
         );
       })}
@@ -587,15 +654,26 @@ function Pagina({jsDoc, numero, campi, scelto, onScegli, onSposta, onNuovo, modo
 
 /* ============================ foglio di modifica campo ============================ */
 
-function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina}) {
+function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina, onImpara}) {
   const [testo, setTesto] = useState(campo.tipo === "check" ? "" : String(campo.valore || ""));
-  useEffect(() => { setTesto(campo.tipo === "check" ? "" : String(campo.valore || "")); }, [campo.id]);
+  const apertura = useRef(Date.now());
+  useEffect(() => {
+    setTesto(campo.tipo === "check" ? "" : String(campo.valore || ""));
+    apertura.current = Date.now();
+  }, [campo.id]);
 
-  const conferma = () => { onAggiorna(campo.id, {valore: testo}); onChiudi(); };
+  const conferma = () => {
+    onAggiorna(campo.id, {valore: testo});
+    const t = testo.trim();
+    if (campo.chiave && t && campo.chiave !== "data_oggi" && !anagrafica[campo.chiave]) {
+      onImpara(campo.chiave, t);
+    }
+    onChiudi();
+  };
   const usaChiave = (chiave) => {
     const v = valoreAnagrafica(anagrafica, chiave);
-    setTesto(v);
-    onAggiorna(campo.id, {chiave, valore: v});
+    onAggiorna(campo.id, {chiave, valore: v || testo});
+    if (v) setTesto(v);
   };
   const usaFirma = (id) => { onAggiorna(campo.id, {firmaId: id, tipo: "firma"}); onChiudi(); };
 
@@ -604,7 +682,7 @@ function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina}
 
   return (
     <>
-      <div className="velo" onClick={onChiudi}></div>
+      <div className="velo" onClick={() => { if (Date.now() - apertura.current > 300) onChiudi(); }}></div>
       <div className="sheet">
         <h3>{titolo}</h3>
         <p className="nomecampo">{campo.nome || "campo rilevato"}{campo.acro ? " · modulo" : " · aggiunto"}</p>
@@ -635,12 +713,16 @@ function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina}
                   onChange={(e) => setTesto(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") conferma(); }}
                   placeholder="Scrivi qui" />
-                <span className="etichetta">Dati salvati</span>
+                <span className="etichetta">Dati salvati — tocca per usarli, i vuoti li imparo da quello che scrivi</span>
                 <div className="chips">
-                  {CAMPI_ANAGRAFICA.filter((c) => c.auto || anagrafica[c.chiave]).map((c) => (
-                    <button key={c.chiave} className={"chip" + (campo.chiave === c.chiave ? " attivo" : "")}
-                      onClick={() => usaChiave(c.chiave)}>{c.etichetta}</button>
-                  ))}
+                  {CAMPI_ANAGRAFICA.map((c) => {
+                    const pieno = !!valoreAnagrafica(anagrafica, c.chiave);
+                    return (
+                      <button key={c.chiave}
+                        className={"chip" + (campo.chiave === c.chiave ? " attivo" : "") + (pieno ? "" : " vuoto")}
+                        onClick={() => usaChiave(c.chiave)}>{c.etichetta}</button>
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -670,7 +752,7 @@ function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina}
 
 /* ============================ editor ============================ */
 
-function Editor({file, anagrafica, firme, onEsci, toast}) {
+function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
   const [stato, setStato] = useState("carico");
   const [campi, setCampi] = useState([]);
   const [pagina, setPagina] = useState(0);
@@ -683,6 +765,7 @@ function Editor({file, anagrafica, firme, onEsci, toast}) {
   const impronta = useRef("");
   const rilevate = useRef(new Set());
   const daLayout = useRef(false);
+  const pagineAcro = useRef(new Set());
   const altezze = useRef({});
 
   useEffect(() => {
@@ -720,6 +803,7 @@ function Editor({file, anagrafica, firme, onEsci, toast}) {
           }
           return c;
         });
+        lista.forEach((c) => { if (c.acro) pagineAcro.current.add(c.pagina); });
         if (!vivo) return;
         setCampi(lista);
         setStato("pronto");
@@ -731,18 +815,42 @@ function Editor({file, anagrafica, firme, onEsci, toast}) {
     return () => { vivo = false; };
   }, [file]);
 
-  const paginaPronta = useCallback((num, ctx, W, H, scala, altPag) => {
+  const paginaPronta = useCallback(async (num, ctx, W, H, scala, altPag) => {
     altezze.current[num] = altPag;
-    if (daLayout.current || rilevate.current.has(num)) return;
+    if (daLayout.current || rilevate.current.has(num) || pagineAcro.current.has(num)) return;
     rilevate.current.add(num);
+    let trovati = [];
+    try { trovati = rilevaCampi(ctx, W, H, scala, altPag); } catch (e) { console.error(e); }
+    if (!trovati.length) return;
+
+    // etichette stampate: funziona su PDF digitali, sulle scansioni resta vuoto
+    let voci = [];
+    try {
+      const pag = await jsDoc.current.getPage(num + 1);
+      const tc = await pag.getTextContent();
+      voci = tc.items
+        .filter((i) => i.str && i.str.trim())
+        .map((i) => ({testo: i.str, x: i.transform[4], y: i.transform[5], w: i.width || 0}));
+    } catch (e) { console.warn("testo pagina", e); }
+
     setCampi((prec) => {
       if (prec.some((c) => c.pagina === num)) return prec;
-      let trovati = [];
-      try { trovati = rilevaCampi(ctx, W, H, scala, altPag); } catch (e) { console.error(e); }
-      if (!trovati.length) return prec;
-      return prec.concat(trovati.map((c) => ({...c, pagina: num})));
+      return prec.concat(trovati.map((c) => {
+        const campo = {...c, pagina: num};
+        if (campo.tipo === "testo" && voci.length) {
+          const chiave = chiaveDaEtichette(campo, voci);
+          if (chiave === "__firma__") {
+            campo.tipo = "firma";
+          } else if (chiave) {
+            campo.chiave = chiave;
+            const v = valoreAnagrafica(anagrafica, chiave);
+            if (v) campo.valore = v;
+          }
+        }
+        return campo;
+      }));
     });
-  }, []);
+  }, [anagrafica]);
 
   const aggiorna = (id, patch) => setCampi((p) => p.map((c) => (c.id === id ? {...c, ...patch} : c)));
   const elimina = (id) => setCampi((p) => p.filter((c) => c.id !== id));
@@ -896,7 +1004,8 @@ function Editor({file, anagrafica, firme, onEsci, toast}) {
 
       {campoScelto && (
         <FoglioCampo campo={campoScelto} anagrafica={anagrafica} firme={firme}
-          onChiudi={() => setScelto(null)} onAggiorna={aggiorna} onElimina={elimina} />
+          onChiudi={() => setScelto(null)} onAggiorna={aggiorna} onElimina={elimina}
+          onImpara={onImpara} />
       )}
     </div>
   );
@@ -1090,6 +1199,11 @@ function App() {
   const [moduli, setModuli] = useState([]);
   const input = useRef(null);
 
+  const imparaDato = useCallback(async (chiave, valore) => {
+    try { await idbSalva("anagrafica", {chiave, valore}); } catch (e) { console.warn(e); }
+    setAnagrafica((a) => ({...a, [chiave]: valore}));
+  }, []);
+
   const toast = useCallback((t) => {
     setMsg(t);
     setTimeout(() => setMsg((m) => (m === t ? "" : m)), 3200);
@@ -1120,7 +1234,8 @@ function App() {
   let vista;
   if (schermata === "editor" && file) {
     vista = <Editor file={file} anagrafica={anagrafica} firme={firme}
-      onEsci={() => { setFile(null); setSchermata("home"); }} toast={toast} />;
+      onEsci={() => { setFile(null); setSchermata("home"); }} toast={toast}
+      onImpara={imparaDato} />;
   } else if (schermata === "anagrafica") {
     vista = <Anagrafica anagrafica={anagrafica} onCambia={setAnagrafica}
       onEsci={() => setSchermata("home")} toast={toast} />;

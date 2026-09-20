@@ -18,10 +18,13 @@ Il service worker mette in cache app e librerie al primo avvio. Pubblicando una 
 
 **Moduli piatti o scansionati.** La pagina viene renderizzata su canvas e analizzata pixel per pixel:
 
-- righe da compilare: tratti orizzontali scuri lunghi almeno 45pt, spessi al massimo 2,5pt, con lo spazio sopra libero;
+- righe da compilare: tratti orizzontali lunghi almeno 36pt, ricomponendo i buchi fino a 4,5pt — è così che vengono riconosciute le righe di underscore spaziati e quelle di puntini `………`, che altrimenti sarebbero invisibili;
+- il filtro decisivo è lo spessore verticale: l'inchiostro di una riga occupa poche righe di pixel, quello del testo molte. Senza questo controllo i bordi superiori delle lettere maiuscole vengono scambiati per righe tratteggiate;
 - caselle: quadrati fra 8,5 e 18pt, con i quattro bordi pieni e l'interno vuoto (è questo che esclude le lettere).
 
-Su un modulo di prova con 12 righe e 4 caselle il rilevamento le trova tutte, senza falsi positivi, in circa 60 ms.
+Su un modulo con righe vettoriali (12 righe, 4 caselle) le trova tutte in circa 60 ms. Su un'autocertificazione con underscore e puntini trova 12 campi su 12, compresa la riga della firma, con un falso positivo.
+
+**Etichette e compilazione automatica.** Per i PDF digitali il livello testo di pdf.js dà posizione e contenuto di ogni parola. Per ogni riga trovata viene cercata l'etichetta a sinistra (anche quando etichetta e underscore sono lo stesso blocco: la porzione che precede il campo viene tagliata al confine di parola), sotto (`(comune di residenza)`) e sopra (`Luogo e data`, `Il/La dichiarante`). L'etichetta viene confrontata con le regole e il campo si precompila da solo. Un'etichetta che parla di firma trasforma il campo in campo firma. Sulle scansioni il livello testo è vuoto e non succede nulla: serve l'OCR, fuori perimetro.
 
 **Memoria del modulo.** Alla prima compilazione viene salvata un'impronta del documento (hash del testo della prima pagina, o nome e dimensione se il PDF è scansionato) insieme a posizione e associazione di ogni campo. Riaprendo lo stesso modulo i campi tornano al loro posto senza rilevarli di nuovo.
 
@@ -39,7 +42,8 @@ Su un modulo di prova con 12 righe e 4 caselle il rilevamento le trova tutte, se
 
 ## Limiti noti
 
-- Niente OCR: le etichette dei moduli scansionati non vengono lette, l'associazione a un dato si fa con un tap la prima volta e poi resta in memoria.
+- Niente OCR: sui moduli scansionati le etichette non si leggono, l'associazione a un dato si fa con un tap la prima volta e poi resta in memoria.
+- I dati non ancora salvati appaiono comunque fra i suggerimenti, in grigio: quello che scrivi in un campo associato viene imparato e riproposto nei moduli successivi.
 - Il rilevamento lavora alla risoluzione di rendering del telefono (circa 1,2x). Su scansioni storte o molto sbiadite conviene aggiungere i campi a mano con il tasto `＋`.
 - I PDF protetti da password vanno sbloccati prima.
 - I campi radio e i menù a tendina vengono compilati solo se il PDF li espone come campi veri.
