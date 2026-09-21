@@ -32,12 +32,27 @@ Su un modulo con righe vettoriali (12 righe, 4 caselle) le trova tutte in circa 
 
 **Firme.** Disegnate su canvas, ritagliate sul tratto, salvate come PNG trasparente in IndexedDB. Inserite in un campo, vengono scalate mantenendo le proporzioni.
 
+## Profili
+
+Ogni persona ha il suo profilo con i suoi dati. Il profilo attivo precompila i moduli; all'apertura di un modulo, se i profili sono più di uno, l'app chiede chi stai compilando, e nel pannello di ogni campo puoi passare a un'altra persona per quel campo soltanto. Quello che scrivi in un campo associato a un dato ancora vuoto viene imparato nel profilo di quel campo. I vecchi dati singoli vengono migrati nel profilo "Io" al primo avvio.
+
+Scrivendo `Paullo (MI)` in un campo comune o luogo di nascita, la sigla finisce nel campo provincia accanto e viene imparata. Un campo corto subito dopo un comune viene riconosciuto da solo come provincia.
+
+## Pannello del campo
+
+Corpo del testo (A− / A+ rispetto al calcolo automatico), spostamento di 2pt nelle quattro direzioni, e scrittura normale, MAIUSCOLA o minuscola. Le scelte restano memorizzate con il modulo.
+
+## Navigazione
+
+Il gesto indietro di Android chiude un livello alla volta: pannello, poi modulo, poi schermata. La ricarica trascinando dall'alto è disattivata.
+
 ## Archivio locale (IndexedDB `pdffill`)
 
 | store | contenuto |
 |---|---|
 | `firme` | `{id, nome, png, predefinita}` |
-| `anagrafica` | `{chiave, valore}` |
+| `profili` | `{id, nome, dati}` — un profilo per persona |
+| `anagrafica` | vecchio formato, letto solo per la migrazione |
 | `layout` | `{impronta, nome, campi[]}` — solo posizioni e associazioni, mai i valori digitati |
 
 ## Limiti noti

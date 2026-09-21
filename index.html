@@ -6,6 +6,7 @@
 <title>PDF Fill</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#16202b">
+<meta name="color-scheme" content="dark">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="icon" href="./icona-192.png">
 <link rel="apple-touch-icon" href="./icona-192.png">
@@ -22,17 +23,19 @@
     --firma:#8b7cf6;
     --errore:#ff6b6b;
     --ok:#3ecf8e;
+    color-scheme:dark;
     box-sizing:border-box;
     padding-top:env(safe-area-inset-top,0px);
     padding-bottom:env(safe-area-inset-bottom,0px);
   }
   *,*::before,*::after{box-sizing:border-box}
-  html,body{height:100%;margin:0}
+  html,body{height:100%;margin:0;overscroll-behavior:none}
   body{
     background:var(--sfondo);color:var(--testo);
     font-family:ui-sans-serif,Roboto,-apple-system,"Segoe UI",sans-serif;
     font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%;
-    overscroll-behavior-y:none;
+    overscroll-behavior:none;
+    -webkit-text-fill-color:currentColor;
   }
   button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
   input,select{font:inherit}
@@ -56,7 +59,7 @@
   .icona-btn:disabled{opacity:.35}
 
   /* home */
-  .corpo{flex:1;overflow-y:auto;padding:20px 16px 32px;-webkit-overflow-scrolling:touch}
+  .corpo{flex:1;overflow-y:auto;padding:20px 16px 32px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
   .titolone{font-size:30px;line-height:1.12;font-weight:700;letter-spacing:-.03em;margin:8px 0 6px}
   .sommario{color:var(--tenue);margin:0 0 24px;max-width:34em}
   .azione{
@@ -80,7 +83,7 @@
   .gruppo h2{font-size:14px;font-weight:600;color:var(--tenue);margin:0 0 8px}
 
   /* editor */
-  .scena{flex:1;overflow:auto;background:#0e151d;position:relative;touch-action:pan-x pan-y}
+  .scena{flex:1;overflow:auto;background:#0e151d;position:relative;touch-action:pan-x pan-y;overscroll-behavior:contain}
   .foglio{position:relative;margin:14px auto;box-shadow:0 10px 30px rgba(0,0,0,.5);background:#fff;width:max-content}
   .foglio canvas{display:block}
   .campo{
@@ -93,7 +96,7 @@
   .campo.firmato{background:rgba(139,124,246,.14);border-color:rgba(139,124,246,.75)}
   .campo.scelto{outline:2px solid var(--penna);outline-offset:1px}
   .campo .val{
-    color:#10243d;font-family:Helvetica,Arial,sans-serif;white-space:nowrap;
+    color:#10243d;-webkit-text-fill-color:#10243d;font-family:Helvetica,Arial,sans-serif;white-space:nowrap;
     padding:0 2px;pointer-events:none;
   }
   .campo img{width:100%;height:100%;object-fit:contain;pointer-events:none}
@@ -101,7 +104,7 @@
     position:absolute;right:-9px;top:50%;transform:translateY(-50%);
     width:18px;height:26px;border-radius:5px;background:var(--penna);opacity:.9;
   }
-  .campo .spunta{color:#10243d;font-weight:700;width:100%;text-align:center;pointer-events:none}
+  .campo .spunta{color:#10243d;-webkit-text-fill-color:#10243d;font-weight:700;width:100%;text-align:center;pointer-events:none}
   .piedi{
     display:flex;align-items:center;gap:10px;padding:10px 14px;
     background:var(--superficie);border-top:1px solid var(--bordo);flex:0 0 auto;
@@ -117,14 +120,15 @@
     background:var(--superficie);border-radius:18px 18px 0 0;
     border-top:1px solid var(--bordo);
     padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));
-    max-height:82vh;overflow-y:auto;
+    max-height:82vh;overflow-y:auto;overscroll-behavior:contain;
   }
   .sheet h3{margin:0 0 2px;font-size:17px;font-weight:600}
   .sheet .nomecampo{color:var(--tenue);font-size:13px;margin:0 0 14px;word-break:break-all}
   .campo-testo{
     width:100%;padding:13px 14px;border-radius:12px;background:var(--sfondo);
-    border:1px solid var(--bordo);color:var(--testo);
+    border:1px solid var(--bordo);color:var(--testo);-webkit-text-fill-color:var(--testo);
   }
+  .campo-testo:-webkit-autofill{-webkit-text-fill-color:var(--testo);-webkit-box-shadow:0 0 0 40px var(--sfondo) inset}
   .campo-testo:focus{outline:2px solid var(--penna);outline-offset:-1px}
   .chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
   .chip{
@@ -133,6 +137,12 @@
   }
   .chip.vuoto{opacity:.55;border-style:dashed}
   .chip.attivo{background:var(--penna);border-color:var(--penna);color:#04131f;font-weight:600}
+  .opzioni{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+  .mini{
+    min-width:44px;padding:9px 10px;border-radius:10px;background:var(--superficie2);
+    border:1px solid var(--bordo);font-size:15px;text-align:center;
+  }
+  .mini:active{background:var(--bordo)}
   .righe{display:flex;gap:10px;margin-top:16px}
   .righe>*{flex:1}
   .btn{padding:13px;border-radius:12px;background:var(--superficie2);border:1px solid var(--bordo);text-align:center;font-weight:600}
@@ -186,7 +196,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 /* ============================ archivio (IndexedDB) ============================ */
 
 const DB_NOME = "pdffill";
-const DB_VER = 1;
+const DB_VER = 2;
 let dbCache = null;
 
 function apriDB() {
@@ -198,6 +208,7 @@ function apriDB() {
       if (!d.objectStoreNames.contains("firme")) d.createObjectStore("firme", {keyPath: "id"});
       if (!d.objectStoreNames.contains("anagrafica")) d.createObjectStore("anagrafica", {keyPath: "chiave"});
       if (!d.objectStoreNames.contains("layout")) d.createObjectStore("layout", {keyPath: "impronta"});
+      if (!d.objectStoreNames.contains("profili")) d.createObjectStore("profili", {keyPath: "id"});
     };
     r.onsuccess = () => { dbCache = r.result; ok(dbCache); };
     r.onerror = () => ko(r.error);
@@ -227,6 +238,22 @@ function idbElimina(store, chiave) {
   }));
 }
 
+/* ============================ gesto indietro ============================ */
+// ogni pannello o schermata registra un livello: il gesto indietro ne chiude uno alla volta
+const livelli = [];
+function apriLivello(chiudi) {
+  livelli.push(chiudi);
+  try { history.pushState({pdffill: livelli.length}, ""); } catch (e) {}
+}
+function chiudiLivello() {
+  if (!livelli.length) return;
+  try { history.back(); } catch (e) { const c = livelli.pop(); if (c) c(); }
+}
+window.addEventListener("popstate", () => {
+  const c = livelli.pop();
+  if (c) c();
+});
+
 /* ============================ anagrafica ============================ */
 
 const CAMPI_ANAGRAFICA = [
@@ -245,6 +272,13 @@ const CAMPI_ANAGRAFICA = [
   {chiave: "email", etichetta: "Email"},
   {chiave: "documento", etichetta: "Documento"},
   {chiave: "azienda", etichetta: "Azienda"},
+  {chiave: "professione", etichetta: "Professione"},
+  {chiave: "cittadinanza", etichetta: "Cittadinanza"},
+  {chiave: "sesso", etichetta: "Sesso"},
+  {chiave: "stato_civile", etichetta: "Stato civile"},
+  {chiave: "pec", etichetta: "PEC"},
+  {chiave: "doc_rilasciato", etichetta: "Documento rilasciato da"},
+  {chiave: "doc_scadenza", etichetta: "Scadenza documento"},
   {chiave: "luogo_firma", etichetta: "Luogo di firma"},
   {chiave: "data_oggi", etichetta: "Data di oggi", auto: true},
 ];
@@ -261,12 +295,20 @@ const REGOLE = [
   ["nome", /(\bnome\b|firstname|first_name|givenname|\bname\b)/],
   ["cap", /(\bcap\b|c\.a\.p|\bzip\b|postal)/],
   ["provincia", /(provincia|\bprov\b|\bpr\b)/],
-  ["citta", /(citt|comune|localit|\bcity\b)/],
+  ["citta", /(citt[aà](?![a-z])|comune|localit|\bcity\b)/],
   ["indirizzo", /(indirizzo|\bvia\b|residen|address|domicil)/],
   ["telefono", /(telefono|\btel\b|cell|phone|mobile|recapito)/],
-  ["email", /(e-?mail|posta\s*elettronica|\bpec\b)/],
+  ["email", /(e-?mail|posta\s*elettronica(?!\s*certificata))/],
+  ["doc_rilasciato", /(rilasciat[oa]\s*d|rilasciato\s*il)/],
+  ["doc_scadenza", /(scadenz|valido\s*fino)/],
   ["documento", /(carta\s*d.?identit|documento|patente|passaporto)/],
-  ["azienda", /(azienda|societ|ragione\s*sociale|ditta|impresa|company)/],
+  ["azienda", /(azienda|societ|ragione\s*sociale|ditta|impresa|company|in\s*qualit[aà]\s*di)/],
+  ["professione", /(professione|occupazione|mansione|qualifica)/],
+  ["cittadinanza", /(cittadinanz|nazionalit)/],
+  ["stato_civile", /(stato\s*civile|coniugat|celibe|nubile)/],
+  ["sesso", /(\bsesso\b|\bgenere\b|\bm\s*\/\s*f\b)/],
+  ["pec", /(\bpec\b|posta\s*certificata)/],
+  ["civico", /(civico|\bfraz\b|\binterno\b|\bint\b|\bpiano\b)/],
   ["luogo_firma", /(luogo\s*e\s*data)/],
   ["civico", /^n\.?$/],
   ["data_nascita", /^il$/],
@@ -321,6 +363,33 @@ function indovinaChiave(nomeCampo) {
   const n = (nomeCampo || "").toLowerCase().replace(/[_\-.]+/g, " ");
   for (const [chiave, re] of REGOLE) if (re.test(n)) return chiave;
   return null;
+}
+
+function testoFinale(campo) {
+  const t = String(campo.valore == null ? "" : campo.valore);
+  if (campo.caso === "alto") return t.toUpperCase();
+  if (campo.caso === "basso") return t.toLowerCase();
+  return t;
+}
+
+function datiDiProfilo(profili, id) {
+  const p = (profili || []).find((x) => x.id === id);
+  return (p && p.dati) || {};
+}
+
+// un campo corto subito dopo un comune e' la provincia: "Paullo (MI)"
+function assegnaProvince(campi, dati, idProfilo) {
+  campi.forEach((c) => {
+    if (c.chiave || c.tipo !== "testo" || c.w > 60) return;
+    const prima = campi.filter((o) => o !== c && o.pagina === c.pagina && Math.abs(o.y - c.y) <= 6 &&
+      o.x < c.x && (o.chiave === "citta" || o.chiave === "luogo_nascita"))
+      .sort((a, b) => b.x - a.x)[0];
+    if (!prima) return;
+    c.chiave = "provincia";
+    const v = valoreAnagrafica(dati, "provincia");
+    if (v) { c.valore = v; c.profilo = idProfilo; }
+  });
+  return campi;
 }
 
 function dataOggi() {
@@ -639,7 +708,7 @@ function Pagina({jsDoc, numero, campi, scelto, onScegli, onSposta, onNuovo, modo
             {firma && <img src={firma.png} alt="" />}
             {!firma && c.tipo === "check" && c.valore && <span className="spunta">✕</span>}
             {!firma && c.tipo !== "check" && !!c.valore &&
-              <span className="val" style={{fontSize: Math.max(7, Math.min(c.h * 0.72, 12) * s)}}>{c.valore}</span>}
+              <span className="val" style={{fontSize: Math.max(6, (Math.min(c.h * 0.72, 12) + (c.corpo || 0)) * s)}}>{testoFinale(c)}</span>}
             {scelto === c.id && <span className="maniglia"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => giuSuCampo(e, c, true)}
@@ -654,7 +723,7 @@ function Pagina({jsDoc, numero, campi, scelto, onScegli, onSposta, onNuovo, modo
 
 /* ============================ foglio di modifica campo ============================ */
 
-function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina, onImpara}) {
+function FoglioCampo({campo, profili, attivo, firme, onChiudi, onAggiorna, onElimina, onImpara, onProvincia}) {
   const [testo, setTesto] = useState(campo.tipo === "check" ? "" : String(campo.valore || ""));
   const apertura = useRef(Date.now());
   useEffect(() => {
@@ -662,30 +731,56 @@ function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina,
     apertura.current = Date.now();
   }, [campo.id]);
 
+  const idProfilo = campo.profilo || attivo;
+  const dati = datiDiProfilo(profili, idProfilo);
+  const nomeProfilo = (profili.find((p) => p.id === idProfilo) || {}).nome || "";
+
   const conferma = () => {
-    onAggiorna(campo.id, {valore: testo});
-    const t = testo.trim();
-    if (campo.chiave && t && campo.chiave !== "data_oggi" && !anagrafica[campo.chiave]) {
-      onImpara(campo.chiave, t);
+    let valore = testo;
+    const m = /^(.+?)\s*\(\s*([A-Za-z]{2})\s*\)\s*$/.exec(testo.trim());
+    if (m && (campo.chiave === "citta" || campo.chiave === "luogo_nascita")) {
+      valore = m[1].trim();
+      onProvincia(campo, m[2].toUpperCase(), idProfilo);
+    }
+    onAggiorna(campo.id, {valore});
+    const t = String(valore).trim();
+    if (campo.chiave && t && campo.chiave !== "data_oggi" && !dati[campo.chiave]) {
+      onImpara(campo.chiave, t, idProfilo);
     }
     onChiudi();
   };
   const usaChiave = (chiave) => {
-    const v = valoreAnagrafica(anagrafica, chiave);
-    onAggiorna(campo.id, {chiave, valore: v || testo});
+    const v = valoreAnagrafica(dati, chiave);
+    onAggiorna(campo.id, {chiave, valore: v || testo, profilo: idProfilo});
+    if (v) setTesto(v);
+  };
+  const usaProfilo = (id) => {
+    const v = campo.chiave ? valoreAnagrafica(datiDiProfilo(profili, id), campo.chiave) : "";
+    onAggiorna(campo.id, {profilo: id, valore: v || campo.valore});
     if (v) setTesto(v);
   };
   const usaFirma = (id) => { onAggiorna(campo.id, {firmaId: id, tipo: "firma"}); onChiudi(); };
+  const sposta = (dx, dy) => onAggiorna(campo.id, {x: campo.x + dx, y: campo.y + dy});
 
   const titolo = campo.tipo === "check" ? "Casella" : campo.tipo === "firma" ? "Firma"
     : campo.tipo === "scelta" ? "Scelta" : "Testo";
+
+  // i dati gia' compilati per primi
+  const elenco = CAMPI_ANAGRAFICA.slice().sort((x, y) => {
+    const a = valoreAnagrafica(dati, x.chiave) ? 0 : 1;
+    const b = valoreAnagrafica(dati, y.chiave) ? 0 : 1;
+    return a - b;
+  });
 
   return (
     <>
       <div className="velo" onClick={() => { if (Date.now() - apertura.current > 300) onChiudi(); }}></div>
       <div className="sheet">
         <h3>{titolo}</h3>
-        <p className="nomecampo">{campo.nome || "campo rilevato"}{campo.acro ? " · modulo" : " · aggiunto"}</p>
+        <p className="nomecampo">
+          {campo.nome || "campo rilevato"}{campo.acro ? " · modulo" : " · aggiunto"}
+          {nomeProfilo ? " · " + nomeProfilo : ""}
+        </p>
 
         {campo.tipo === "check" && (
           <div className="righe">
@@ -713,16 +808,48 @@ function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina,
                   onChange={(e) => setTesto(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") conferma(); }}
                   placeholder="Scrivi qui" />
-                <span className="etichetta">Dati salvati — tocca per usarli, i vuoti li imparo da quello che scrivi</span>
+
+                {profili.length > 1 && (
+                  <>
+                    <span className="etichetta">Persona</span>
+                    <div className="chips">
+                      {profili.map((pr) => (
+                        <button key={pr.id} className={"chip" + (idProfilo === pr.id ? " attivo" : "")}
+                          onClick={() => usaProfilo(pr.id)}>{pr.nome}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <span className="etichetta">Dati di {nomeProfilo || "questo profilo"} — i vuoti li imparo da quello che scrivi</span>
                 <div className="chips">
-                  {CAMPI_ANAGRAFICA.map((c) => {
-                    const pieno = !!valoreAnagrafica(anagrafica, c.chiave);
+                  {elenco.map((c) => {
+                    const pieno = !!valoreAnagrafica(dati, c.chiave);
                     return (
                       <button key={c.chiave}
                         className={"chip" + (campo.chiave === c.chiave ? " attivo" : "") + (pieno ? "" : " vuoto")}
                         onClick={() => usaChiave(c.chiave)}>{c.etichetta}</button>
                     );
                   })}
+                </div>
+
+                <span className="etichetta">Aspetto e posizione</span>
+                <div className="opzioni">
+                  <button className="mini" onClick={() => onAggiorna(campo.id, {corpo: (campo.corpo || 0) - 0.5})}>A−</button>
+                  <button className="mini" onClick={() => onAggiorna(campo.id, {corpo: 0})}>
+                    {(campo.corpo || 0) === 0 ? "auto" : (campo.corpo > 0 ? "+" : "") + campo.corpo}
+                  </button>
+                  <button className="mini" onClick={() => onAggiorna(campo.id, {corpo: (campo.corpo || 0) + 0.5})}>A+</button>
+                  <button className="mini" onClick={() => sposta(-2, 0)}>←</button>
+                  <button className="mini" onClick={() => sposta(2, 0)}>→</button>
+                  <button className="mini" onClick={() => sposta(0, 2)}>↑</button>
+                  <button className="mini" onClick={() => sposta(0, -2)}>↓</button>
+                </div>
+                <div className="chips">
+                  {[["", "Normale"], ["alto", "MAIUSCOLO"], ["basso", "minuscolo"]].map(([v, e]) => (
+                    <button key={v || "n"} className={"chip" + ((campo.caso || "") === v ? " attivo" : "")}
+                      onClick={() => onAggiorna(campo.id, {caso: v})}>{e}</button>
+                  ))}
                 </div>
               </>
             )}
@@ -752,8 +879,10 @@ function FoglioCampo({campo, anagrafica, firme, onChiudi, onAggiorna, onElimina,
 
 /* ============================ editor ============================ */
 
-function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
+function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva}) {
   const [stato, setStato] = useState("carico");
+  const [profiloDoc, setProfiloDoc] = useState(attivo);
+  const [sceltaPersona, setSceltaPersona] = useState(false);
   const [campi, setCampi] = useState([]);
   const [pagina, setPagina] = useState(0);
   const [nPagine, setNPagine] = useState(1);
@@ -767,6 +896,9 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
   const daLayout = useRef(false);
   const pagineAcro = useRef(new Set());
   const altezze = useRef({});
+  const dati = datiDiProfilo(profili, profiloDoc || attivo);
+
+  useEffect(() => { setProfiloDoc(attivo); }, [attivo]);
 
   useEffect(() => {
     let vivo = true;
@@ -795,11 +927,11 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
           const libDoc = await PDFDocument.load(bytes.current.slice(0), {ignoreEncryption: true});
           lista = leggiAcro(libDoc);
         }
-        // precompilo dall'anagrafica
+        // precompilo dai dati della persona scelta
         lista = lista.map((c) => {
           if (c.tipo === "testo" && c.chiave && !c.valore) {
-            const v = valoreAnagrafica(anagrafica, c.chiave);
-            if (v) return {...c, valore: v};
+            const v = valoreAnagrafica(dati, c.chiave);
+            if (v) return {...c, valore: v, profilo: profiloDoc || attivo};
           }
           return c;
         });
@@ -807,6 +939,10 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
         if (!vivo) return;
         setCampi(lista);
         setStato("pronto");
+        if (profili.length > 1) {
+          setSceltaPersona(true);
+          apriLivello(() => setSceltaPersona(false));
+        }
       } catch (e) {
         console.error(e);
         if (vivo) setStato("errore");
@@ -835,7 +971,7 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
 
     setCampi((prec) => {
       if (prec.some((c) => c.pagina === num)) return prec;
-      return prec.concat(trovati.map((c) => {
+      const nuovi = trovati.map((c) => {
         const campo = {...c, pagina: num};
         if (campo.tipo === "testo" && voci.length) {
           const chiave = chiaveDaEtichette(campo, voci);
@@ -843,23 +979,41 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
             campo.tipo = "firma";
           } else if (chiave) {
             campo.chiave = chiave;
-            const v = valoreAnagrafica(anagrafica, chiave);
+            campo.profilo = profiloDoc || attivo;
+            const v = valoreAnagrafica(dati, chiave);
             if (v) campo.valore = v;
           }
         }
         return campo;
-      }));
+      });
+      assegnaProvince(nuovi, dati, profiloDoc || attivo);
+      return prec.concat(nuovi);
     });
-  }, [anagrafica]);
+  }, [dati, profiloDoc, attivo]);
 
   const aggiorna = (id, patch) => setCampi((p) => p.map((c) => (c.id === id ? {...c, ...patch} : c)));
+
+  // "Paullo (MI)" scritto nel comune: la sigla va nel campo provincia accanto
+  const dividiProvincia = (campo, sigla, idProfilo) => {
+    onImpara("provincia", sigla, idProfilo);
+    setCampi((p) => {
+      const vicino = p.filter((c) => c.id !== campo.id && c.pagina === campo.pagina &&
+        Math.abs(c.y - campo.y) <= 6 && c.x > campo.x && c.tipo === "testo" && !c.valore)
+        .sort((a, b) => a.x - b.x)[0];
+      if (!vicino) return p;
+      return p.map((c) => (c.id === vicino.id
+        ? {...c, valore: sigla, chiave: c.chiave || "provincia", profilo: idProfilo} : c));
+    });
+    toast("Provincia " + sigla + " messa nel campo accanto");
+  };
   const elimina = (id) => setCampi((p) => p.filter((c) => c.id !== id));
+  const scegli = (id) => { setScelto(id); apriLivello(() => setScelto(null)); };
   const nuovoCampo = (x, y) => {
     const c = {id: nuovoId(), pagina, x: x - 60, y: y - 6, w: 120, h: 13,
       tipo: "testo", nome: "", acro: false, valore: "", chiave: null, firmaId: null};
     setCampi((p) => p.concat(c));
     setModoAgg(false);
-    setScelto(c.id);
+    scegli(c.id);
   };
 
   async function salva() {
@@ -877,9 +1031,9 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
           try {
             const f = form.getField(c.nome);
             if (c.tipo === "testo" && String(c.valore || "")) {
-              const t = sicuro(c.valore);
+              const t = sicuro(testoFinale(c));
               f.setText(t);
-              f.setFontSize(corpoAdatto(t, c.w, c.h, helv, 12));
+              f.setFontSize(Math.max(5, corpoAdatto(t, c.w, c.h, helv, 12) + (c.corpo || 0)));
             } else if (c.tipo === "check") {
               c.valore ? f.check() : f.uncheck();
             } else if (c.tipo === "scelta" && c.valore) {
@@ -918,9 +1072,9 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
           pag.drawLine({start: {x: c.x + m, y: c.y + c.h - m}, end: {x: c.x + c.w - m, y: c.y + m}, ...o});
           continue;
         }
-        const t = sicuro(c.valore);
+        const t = sicuro(testoFinale(c));
         if (!t) continue;
-        const corpo = corpoAdatto(t, c.w, c.h, helv, 12);
+        const corpo = Math.max(5, corpoAdatto(t, c.w, c.h, helv, 12) + (c.corpo || 0));
         const base = c.y + Math.max(1.5, (c.h - corpo) * 0.4);
         pag.drawText(t, {x: c.x + 1.5, y: base, size: corpo, font: helv, color: rgb(0.06, 0.14, 0.24)});
       }
@@ -936,6 +1090,7 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
           campi: campi.map((c) => ({
             pagina: c.pagina, x: c.x, y: c.y, w: c.w, h: c.h, tipo: c.tipo,
             nome: c.nome, acro: c.acro, opzioni: c.opzioni || null, chiave: c.chiave || null,
+            corpo: c.corpo || 0, caso: c.caso || "",
           })),
         });
       } catch (e) { console.warn(e); }
@@ -979,7 +1134,11 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
     <div className="colonna">
       <div className="testa">
         <button className="icona-btn" onClick={onEsci}>‹</button>
-        <h1>{file.name}<span className="sotto">{compilati} di {diPagina.length} campi in questa pagina</span></h1>
+        <h1>{file.name}<span className="sotto">
+          {compilati} di {diPagina.length} campi · {(profili.find((p) => p.id === (profiloDoc || attivo)) || {}).nome || ""}
+        </span></h1>
+        <button className="icona-btn" title="Persona"
+          onClick={() => { setSceltaPersona(true); apriLivello(() => setSceltaPersona(false)); }}>👤</button>
         <button className={"icona-btn" + (modoAgg ? " scelto" : "")}
           style={modoAgg ? {background: "var(--evidenziatore)", color: "#1a1200"} : null}
           onClick={() => setModoAgg((v) => !v)} title="Aggiungi campo">＋</button>
@@ -988,7 +1147,7 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
       <div className="scena">
         {jsDoc.current && (
           <Pagina key={pagina} jsDoc={jsDoc.current} numero={pagina} campi={diPagina}
-            scelto={scelto} onScegli={setScelto} onSposta={aggiorna} onNuovo={nuovoCampo}
+            scelto={scelto} onScegli={scegli} onSposta={aggiorna} onNuovo={nuovoCampo}
             modoAgg={modoAgg} firme={firme} onPronta={paginaPronta} />
         )}
       </div>
@@ -1002,10 +1161,29 @@ function Editor({file, anagrafica, firme, onEsci, toast, onImpara}) {
         <button className="salva" disabled={salvando} onClick={salva}>{salvando ? "Salvo…" : "Salva PDF"}</button>
       </div>
 
+      {sceltaPersona && (
+        <>
+          <div className="velo" onClick={chiudiLivello}></div>
+          <div className="sheet">
+            <h3>Chi stai compilando?</h3>
+            <p className="nomecampo">Vale per tutto il modulo. Nel singolo campo puoi cambiarla.</p>
+            <div className="chips">
+              {profili.map((pr) => (
+                <button key={pr.id} className={"chip" + ((profiloDoc || attivo) === pr.id ? " attivo" : "")}
+                  onClick={() => { setProfiloDoc(pr.id); onAttiva(pr.id); chiudiLivello(); }}>{pr.nome}</button>
+              ))}
+            </div>
+            <div className="righe">
+              <button className="btn primario" onClick={chiudiLivello}>Continua</button>
+            </div>
+          </div>
+        </>
+      )}
+
       {campoScelto && (
-        <FoglioCampo campo={campoScelto} anagrafica={anagrafica} firme={firme}
-          onChiudi={() => setScelto(null)} onAggiorna={aggiorna} onElimina={elimina}
-          onImpara={onImpara} />
+        <FoglioCampo campo={campoScelto} profili={profili} attivo={profiloDoc || attivo} firme={firme}
+          onChiudi={chiudiLivello} onAggiorna={aggiorna} onElimina={elimina}
+          onImpara={onImpara} onProvincia={dividiProvincia} />
       )}
     </div>
   );
@@ -1155,34 +1333,80 @@ function Firme({firme, onCambia, onEsci, toast}) {
 
 /* ============================ anagrafica ============================ */
 
-function Anagrafica({anagrafica, onCambia, onEsci, toast}) {
-  const [val, setVal] = useState(anagrafica);
-  const salva = async () => {
-    for (const c of CAMPI_ANAGRAFICA) {
-      await idbSalva("anagrafica", {chiave: c.chiave, valore: val[c.chiave] || ""});
-    }
-    onCambia(val);
-    toast("Dati salvati");
-    onEsci();
+function SchedaProfilo({profilo, onSalva, onIndietro}) {
+  const [nome, setNome] = useState(profilo.nome);
+  const [dati, setDati] = useState(profilo.dati || {});
+  return (
+    <div className="colonna">
+      <div className="testa">
+        <button className="icona-btn" onClick={onIndietro}>‹</button>
+        <h1>{profilo.nome}</h1>
+      </div>
+      <div className="corpo">
+        <span className="etichetta">Nome del profilo</span>
+        <input className="campo-testo" value={nome} onChange={(e) => setNome(e.target.value)}
+          placeholder="Es. Io, Marco, mia madre" />
+        {CAMPI_ANAGRAFICA.map((c) => (
+          <div key={c.chiave}>
+            <span className="etichetta">{c.etichetta}</span>
+            <input className="campo-testo" value={dati[c.chiave] || ""}
+              placeholder={c.auto ? dataOggi() + " (automatica)" : ""}
+              onChange={(e) => setDati({...dati, [c.chiave]: e.target.value})} />
+          </div>
+        ))}
+        <div style={{height: 18}}></div>
+        <button className="azione"
+          onClick={() => onSalva({...profilo, nome: nome.trim() || profilo.nome, dati})}>Salva profilo</button>
+      </div>
+    </div>
+  );
+}
+
+function Profili({profili, attivo, onSalva, onElimina, onAttiva, onEsci}) {
+  const [aperto, setAperto] = useState(null);
+
+  if (aperto) {
+    const pr = profili.find((p) => p.id === aperto);
+    if (pr) return (
+      <SchedaProfilo profilo={pr} onIndietro={() => setAperto(null)}
+        onSalva={(agg) => { onSalva(agg); setAperto(null); }} />
+    );
+  }
+
+  const nuovo = () => {
+    const pr = {id: nuovoId(), nome: "Nuova persona", dati: {}};
+    onSalva(pr);
+    setAperto(pr.id);
   };
+
   return (
     <div className="colonna">
       <div className="testa">
         <button className="icona-btn" onClick={onEsci}>‹</button>
-        <h1>I tuoi dati</h1>
+        <h1>Profili</h1>
+        <button className="icona-btn" onClick={nuovo}>＋</button>
       </div>
       <div className="corpo">
-        <p className="sommario">Compilati una volta, riconosciuti automaticamente nei moduli con campi e richiamabili con un tap negli altri.</p>
-        {CAMPI_ANAGRAFICA.map((c) => (
-          <div key={c.chiave}>
-            <span className="etichetta">{c.etichetta}</span>
-            <input className="campo-testo" value={val[c.chiave] || ""}
-              placeholder={c.auto ? dataOggi() + " (automatica)" : ""}
-              onChange={(e) => setVal({...val, [c.chiave]: e.target.value})} />
-          </div>
-        ))}
-        <div style={{height: 18}}></div>
-        <button className="azione" onClick={salva}>Salva</button>
+        <p className="sommario">
+          Un profilo per persona. Quello attivo viene usato per precompilare i moduli, e nel
+          pannello di ogni campo puoi passare a un altro.
+        </p>
+        {profili.map((p) => {
+          const pieni = Object.values(p.dati || {}).filter(Boolean).length;
+          return (
+            <div key={p.id} className={"voce" + (p.id === attivo ? " scelto" : "")}
+                 style={p.id === attivo ? {borderColor: "var(--evidenziatore)"} : null}>
+              <span className="eti" onClick={() => setAperto(p.id)}>
+                <b>{p.nome}</b>
+                <span>{pieni} dati{p.id === attivo ? " · attivo" : ""}</span>
+              </span>
+              {p.id !== attivo &&
+                <button className="chip" onClick={() => onAttiva(p.id)}>Usa</button>}
+              {profili.length > 1 &&
+                <button className="chip" onClick={() => onElimina(p.id)}>Elimina</button>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1193,29 +1417,38 @@ function Anagrafica({anagrafica, onCambia, onEsci, toast}) {
 function App() {
   const [schermata, setSchermata] = useState("home");
   const [file, setFile] = useState(null);
-  const [anagrafica, setAnagrafica] = useState({});
+  const [profili, setProfili] = useState([]);
+  const [attivo, setAttivo] = useState(null);
   const [firme, setFirme] = useState([]);
   const [msg, setMsg] = useState("");
   const [moduli, setModuli] = useState([]);
   const input = useRef(null);
-
-  const imparaDato = useCallback(async (chiave, valore) => {
-    try { await idbSalva("anagrafica", {chiave, valore}); } catch (e) { console.warn(e); }
-    setAnagrafica((a) => ({...a, [chiave]: valore}));
-  }, []);
 
   const toast = useCallback((t) => {
     setMsg(t);
     setTimeout(() => setMsg((m) => (m === t ? "" : m)), 3200);
   }, []);
 
+  const vaiA = (nome) => {
+    setSchermata(nome);
+    apriLivello(() => setSchermata("home"));
+  };
+
   useEffect(() => {
     (async () => {
       try {
-        const a = await idbTutti("anagrafica");
-        const o = {};
-        a.forEach((r) => { o[r.chiave] = r.valore; });
-        setAnagrafica(o);
+        let lista = await idbTutti("profili");
+        if (!lista.length) {
+          // migrazione dai vecchi dati singoli
+          const vecchi = await idbTutti("anagrafica");
+          const dati = {};
+          vecchi.forEach((r) => { if (r.valore) dati[r.chiave] = r.valore; });
+          const base = {id: "p_io", nome: "Io", dati};
+          await idbSalva("profili", base);
+          lista = [base];
+        }
+        setProfili(lista);
+        setAttivo((a) => a || lista[0].id);
         setFirme(await idbTutti("firme"));
         const l = await idbTutti("layout");
         setModuli(l.sort((x, y) => y.aggiornato - x.aggiornato).slice(0, 6));
@@ -1223,25 +1456,55 @@ function App() {
     })();
   }, [schermata]);
 
+  const salvaProfilo = useCallback(async (pr) => {
+    setProfili((lista) => (lista.some((p) => p.id === pr.id)
+      ? lista.map((p) => (p.id === pr.id ? pr : p))
+      : lista.concat(pr)));
+    try { await idbSalva("profili", pr); } catch (e) { console.warn(e); }
+  }, []);
+
+  const eliminaProfilo = useCallback(async (id) => {
+    setProfili((lista) => {
+      const resto = lista.filter((p) => p.id !== id);
+      setAttivo((a) => (a === id ? (resto[0] || {}).id : a));
+      return resto;
+    });
+    try { await idbElimina("profili", id); } catch (e) { console.warn(e); }
+  }, []);
+
+  const imparaDato = useCallback((chiave, valore, idProfilo) => {
+    const id = idProfilo || attivo;
+    setProfili((lista) => {
+      const nuova = lista.map((p) =>
+        (p.id === id ? {...p, dati: {...(p.dati || {}), [chiave]: valore}} : p));
+      const agg = nuova.find((p) => p.id === id);
+      if (agg) idbSalva("profili", agg).catch((e) => console.warn(e));
+      return nuova;
+    });
+  }, [attivo]);
+
   const apri = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
     setFile(f);
     setSchermata("editor");
+    apriLivello(() => { setFile(null); setSchermata("home"); });
     e.target.value = "";
   };
 
+  const attivoNome = (profili.find((p) => p.id === attivo) || {}).nome || "";
+
   let vista;
   if (schermata === "editor" && file) {
-    vista = <Editor file={file} anagrafica={anagrafica} firme={firme}
-      onEsci={() => { setFile(null); setSchermata("home"); }} toast={toast}
-      onImpara={imparaDato} />;
-  } else if (schermata === "anagrafica") {
-    vista = <Anagrafica anagrafica={anagrafica} onCambia={setAnagrafica}
-      onEsci={() => setSchermata("home")} toast={toast} />;
+    vista = <Editor file={file} profili={profili} attivo={attivo} firme={firme}
+      onEsci={chiudiLivello} toast={toast} onImpara={imparaDato} onAttiva={setAttivo} />;
+  } else if (schermata === "profili") {
+    vista = <Profili profili={profili} attivo={attivo} onSalva={salvaProfilo}
+      onElimina={eliminaProfilo} onAttiva={setAttivo} onEsci={chiudiLivello} />;
   } else if (schermata === "firme") {
-    vista = <Firme firme={firme} onCambia={setFirme} onEsci={() => setSchermata("home")} toast={toast} />;
+    vista = <Firme firme={firme} onCambia={setFirme} onEsci={chiudiLivello} toast={toast} />;
   } else {
+    const dati = datiDiProfilo(profili, attivo);
     vista = (
       <div className="colonna">
         <div className="corpo">
@@ -1252,12 +1515,13 @@ function App() {
 
           <div className="gruppo">
             <h2>Cosa riuso ogni volta</h2>
-            <button className="voce" onClick={() => setSchermata("anagrafica")}>
-              <span className="eti"><b>I tuoi dati</b>
-                <span>{Object.values(anagrafica).filter(Boolean).length} voci compilate</span></span>
+            <button className="voce" onClick={() => vaiA("profili")}>
+              <span className="eti"><b>Profili</b>
+                <span>{profili.length === 1 ? attivoNome : profili.length + " persone · attivo " + attivoNome}
+                  {" · " + Object.values(dati).filter(Boolean).length + " dati"}</span></span>
               <span className="freccia">›</span>
             </button>
-            <button className="voce" onClick={() => setSchermata("firme")}>
+            <button className="voce" onClick={() => vaiA("firme")}>
               <span className="eti"><b>Firme</b>
                 <span>{firme.length === 0 ? "nessuna, creane una" : firme.length + " salvate"}</span></span>
               <span className="freccia">›</span>
