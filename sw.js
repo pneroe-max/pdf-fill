@@ -1,7 +1,7 @@
 /* PDF Fill — service worker
    Precarica app e librerie: senza il worker di pdf.js in cache l'app non apre i PDF offline. */
 
-const CACHE = "pdffill-v3";
+const CACHE = "pdffill-v4";
 
 const GUSCIO = [
   "./",

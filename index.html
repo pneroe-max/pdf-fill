@@ -120,7 +120,7 @@
     background:var(--superficie);border-radius:18px 18px 0 0;
     border-top:1px solid var(--bordo);
     padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));
-    max-height:82vh;overflow-y:auto;overscroll-behavior:contain;
+    max-height:82vh;max-height:82dvh;overflow-y:auto;overscroll-behavior:contain;
   }
   .sheet h3{margin:0 0 2px;font-size:17px;font-weight:600}
   .sheet .nomecampo{color:var(--tenue);font-size:13px;margin:0 0 14px;word-break:break-all}
@@ -138,6 +138,19 @@
   .chip.vuoto{opacity:.55;border-style:dashed}
   .chip.attivo{background:var(--penna);border-color:var(--penna);color:#04131f;font-weight:600}
   .opzioni{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+  .ritaglio{margin:10px 0 12px;border-radius:10px;overflow:hidden;background:#fff;box-shadow:0 0 0 1px var(--bordo)}
+  .ritaglio canvas{display:block;width:100%}
+  .testa-sheet{display:flex;align-items:flex-start;gap:12px}
+  .testa-sheet>div{flex:1;min-width:0}
+  .testa-sheet h3{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .testa-sheet .nomecampo{margin-bottom:0}
+  .contatore{font-size:13px;color:var(--tenue);padding-top:3px;white-space:nowrap}
+  .chips.scorre{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:8px -16px 0;padding:0 16px 2px}
+  .chips.scorre::-webkit-scrollbar{display:none}
+  .chips.scorre .chip{flex:0 0 auto}
+  .righe.nav{margin-top:12px}
+  .righe.nav .btn:first-child{flex:0 0 56px}
+  .espandi{display:block;width:100%;text-align:left;padding:14px 0 2px;color:var(--tenue);font-size:14px}
   .mini{
     min-width:44px;padding:9px 10px;border-radius:10px;background:var(--superficie2);
     border:1px solid var(--bordo);font-size:15px;text-align:center;
@@ -186,7 +199,7 @@
 <div id="root"><div class="carico"><div class="barra"><i></i></div><div>Avvio</div></div></div>
 
 <script type="text/babel" data-presets="react">
-const {useState, useEffect, useRef, useCallback} = React;
+const {useState, useEffect, useRef, useCallback, useMemo} = React;
 const PL = window.PDFLib;
 const {PDFDocument, StandardFonts, rgb} = PL;
 
@@ -378,6 +391,41 @@ function datiDiProfilo(profili, id) {
 }
 
 // un campo corto subito dopo un comune e' la provincia: "Paullo (MI)"
+// zona del modulo da mostrare nel pannello: il campo piu' l'etichetta a sinistra, sopra e sotto
+function geometriaRitaglio(campo, Wpt, Hpt, larghezzaCss, dpr) {
+  const sx = Math.max(0, campo.x - Math.min(130, campo.x));
+  const larghezzaPt = Math.min(Wpt - sx, Math.max(campo.x - sx + campo.w + 12, 140), 260);
+  const topPt = Math.max(0, Hpt - (campo.y + campo.h) - 20);
+  const altezzaPt = Math.min(Hpt - topPt, campo.h + 38);
+  const k = (larghezzaCss / larghezzaPt) * dpr;
+  return {
+    sx, topPt, larghezzaPt, altezzaPt, k,
+    fx: (campo.x - sx) * k, fy: (Hpt - campo.y - campo.h - topPt) * k,
+    fw: campo.w * k, fh: campo.h * k,
+  };
+}
+
+// ordine di lettura: pagina, dall'alto in basso, da sinistra a destra; caselle escluse
+function ordineLettura(campi) {
+  return campi.filter((c) => c.tipo !== "check").sort((a, b) =>
+    a.pagina - b.pagina || (Math.abs(a.y - b.y) > 4 ? b.y - a.y : a.x - b.x));
+}
+
+function campoVuoto(c) {
+  return c.tipo === "firma" ? !c.firmaId
+    : !c.firmaId && !String(c.valore == null ? "" : c.valore).trim();
+}
+
+// Avanti: prossimo campo vuoto, ricominciando dall'inizio se serve. Indietro: il precedente, anche se pieno
+function campoDestinazione(navigabili, id, dir) {
+  const i = navigabili.findIndex((c) => c.id === id);
+  if (dir > 0) {
+    return navigabili.slice(i + 1).find(campoVuoto)
+      || navigabili.slice(0, Math.max(0, i)).find(campoVuoto) || null;
+  }
+  return i > 0 ? navigabili[i - 1] : null;
+}
+
 function assegnaProvince(campi, dati, idProfilo) {
   campi.forEach((c) => {
     if (c.chiave || c.tipo !== "testo" || c.w > 60) return;
@@ -723,19 +771,93 @@ function Pagina({jsDoc, numero, campi, scelto, onScegli, onSposta, onNuovo, modo
 
 /* ============================ foglio di modifica campo ============================ */
 
-function FoglioCampo({campo, profili, attivo, firme, onChiudi, onAggiorna, onElimina, onImpara, onProvincia}) {
+function Ritaglio({jsDoc, campo, testo}) {
+  const tela = useRef(null);
+  const base = useRef(null);
+  const geo = useRef(null);
+  const [pronto, setPronto] = useState(0);
+
+  // 1. rendering nitido della sola zona attorno al campo, una volta per campo
+  useEffect(() => {
+    let annullato = false;
+    (async () => {
+      const c = tela.current;
+      if (!c || !jsDoc) return;
+      const larghezzaCss = c.parentNode.clientWidth || 320;
+      const pag = await jsDoc.getPage(campo.pagina + 1);
+      const v1 = pag.getViewport({scale: 1});
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      const g = geometriaRitaglio(campo, v1.width, v1.height, larghezzaCss, dpr);
+      const off = document.createElement("canvas");
+      off.width = Math.round(g.larghezzaPt * g.k);
+      off.height = Math.round(g.altezzaPt * g.k);
+      const ctx = off.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, off.width, off.height);
+      await pag.render({
+        canvasContext: ctx, viewport: pag.getViewport({scale: g.k}),
+        transform: [1, 0, 0, 1, -g.sx * g.k, -g.topPt * g.k],
+      }).promise;
+      if (annullato) return;
+      ctx.fillStyle = "rgba(255,210,63,0.30)";
+      ctx.fillRect(g.fx, g.fy, g.fw, g.fh);
+      ctx.strokeStyle = "rgba(214,158,0,0.95)";
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.strokeRect(g.fx, g.fy, g.fw, g.fh);
+      base.current = off;
+      geo.current = {...g, Hpt: v1.height};
+      c.width = off.width;
+      c.height = off.height;
+      c.style.height = Math.round(off.height / dpr) + "px";
+      setPronto((n) => n + 1);
+    })().catch((e) => console.warn("ritaglio", e));
+    return () => { annullato = true; };
+  }, [jsDoc, campo.id, campo.pagina, campo.x, campo.y, campo.w, campo.h]);
+
+  // 2. a ogni tasto ridisegno solo il testo, senza rifare il rendering del PDF
+  useEffect(() => {
+    const c = tela.current, b = base.current, g = geo.current;
+    if (!c || !b || !g) return;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(b, 0, 0);
+    const t = testoFinale({valore: testo, caso: campo.caso});
+    if (!t || campo.tipo !== "testo") return;
+    const font = (pt) => pt * g.k + "px Helvetica, Arial, sans-serif";
+    let corpo = Math.min(12, Math.max(6, campo.h * 0.72));
+    ctx.font = font(corpo);
+    while (corpo > 6 && ctx.measureText(t).width > (campo.w - 3) * g.k) {
+      corpo -= 0.25;
+      ctx.font = font(corpo);
+    }
+    corpo = Math.max(5, corpo + (campo.corpo || 0));
+    ctx.font = font(corpo);
+    const linea = campo.y + Math.max(1.5, (campo.h - corpo) * 0.4);
+    ctx.fillStyle = "#10243d";
+    ctx.fillText(t, (campo.x + 1.5 - g.sx) * g.k, (g.Hpt - linea - g.topPt) * g.k);
+  }, [pronto, testo, campo.caso, campo.corpo, campo.tipo]);
+
+  return <div className="ritaglio"><canvas ref={tela} width="1" height="1" style={{height: 56}}></canvas></div>;
+}
+
+function FoglioCampo({campo, jsDoc, posizione, profili, attivo, firme,
+                      onChiudi, onAggiorna, onElimina, onImpara, onProvincia, onVai}) {
   const [testo, setTesto] = useState(campo.tipo === "check" ? "" : String(campo.valore || ""));
+  const [aspetto, setAspetto] = useState(false);
   const apertura = useRef(Date.now());
+  const casella = useRef(null);
   useEffect(() => {
     setTesto(campo.tipo === "check" ? "" : String(campo.valore || ""));
     apertura.current = Date.now();
+    if (casella.current) casella.current.focus();
   }, [campo.id]);
 
   const idProfilo = campo.profilo || attivo;
   const dati = datiDiProfilo(profili, idProfilo);
   const nomeProfilo = (profili.find((p) => p.id === idProfilo) || {}).nome || "";
 
-  const conferma = () => {
+  // registra il testo scritto; non chiude il pannello
+  const salvaTesto = () => {
+    if (campo.tipo !== "testo") return;
     let valore = testo;
     const m = /^(.+?)\s*\(\s*([A-Za-z]{2})\s*\)\s*$/.exec(testo.trim());
     if (m && (campo.chiave === "citta" || campo.chiave === "luogo_nascita")) {
@@ -747,8 +869,11 @@ function FoglioCampo({campo, profili, attivo, firme, onChiudi, onAggiorna, onEli
     if (campo.chiave && t && campo.chiave !== "data_oggi" && !dati[campo.chiave]) {
       onImpara(campo.chiave, t, idProfilo);
     }
-    onChiudi();
   };
+  const conferma = () => { salvaTesto(); onChiudi(); };
+  const avanti = () => { salvaTesto(); onVai(1); };
+  const indietro = () => { salvaTesto(); onVai(-1); };
+
   const usaChiave = (chiave) => {
     const v = valoreAnagrafica(dati, chiave);
     onAggiorna(campo.id, {chiave, valore: v || testo, profilo: idProfilo});
@@ -759,28 +884,39 @@ function FoglioCampo({campo, profili, attivo, firme, onChiudi, onAggiorna, onEli
     onAggiorna(campo.id, {profilo: id, valore: v || campo.valore});
     if (v) setTesto(v);
   };
-  const usaFirma = (id) => { onAggiorna(campo.id, {firmaId: id, tipo: "firma"}); onChiudi(); };
+  const usaFirma = (id) => { onAggiorna(campo.id, {firmaId: id, tipo: "firma"}); onVai(1); };
   const sposta = (dx, dy) => onAggiorna(campo.id, {x: campo.x + dx, y: campo.y + dy});
 
-  const titolo = campo.tipo === "check" ? "Casella" : campo.tipo === "firma" ? "Firma"
-    : campo.tipo === "scelta" ? "Scelta" : "Testo";
+  const datoNoto = CAMPI_ANAGRAFICA.find((c) => c.chiave === campo.chiave);
+  const titolo = campo.tipo === "firma" ? "Firma" : campo.tipo === "check" ? "Casella"
+    : campo.tipo === "scelta" ? "Scelta" : (datoNoto ? datoNoto.etichetta : "Campo di testo");
+  const sotto = [campo.nome && campo.nome !== titolo ? campo.nome : "", nomeProfilo]
+    .filter(Boolean).join(" · ");
 
-  // i dati gia' compilati per primi
-  const elenco = CAMPI_ANAGRAFICA.slice().sort((x, y) => {
-    const a = valoreAnagrafica(dati, x.chiave) ? 0 : 1;
-    const b = valoreAnagrafica(dati, y.chiave) ? 0 : 1;
-    return a - b;
-  });
+  const elenco = CAMPI_ANAGRAFICA.slice().sort((x, y) =>
+    (valoreAnagrafica(dati, x.chiave) ? 0 : 1) - (valoreAnagrafica(dati, y.chiave) ? 0 : 1));
 
   return (
     <>
       <div className="velo" onClick={() => { if (Date.now() - apertura.current > 300) onChiudi(); }}></div>
       <div className="sheet">
-        <h3>{titolo}</h3>
-        <p className="nomecampo">
-          {campo.nome || "campo rilevato"}{campo.acro ? " · modulo" : " · aggiunto"}
-          {nomeProfilo ? " · " + nomeProfilo : ""}
-        </p>
+        <div className="testa-sheet">
+          <div>
+            <h3>{titolo}</h3>
+            {sotto && <p className="nomecampo">{sotto}</p>}
+          </div>
+          {posizione && posizione.indice > 0 &&
+            <span className="contatore">{posizione.indice} di {posizione.totale}</span>}
+        </div>
+
+        {jsDoc && <Ritaglio jsDoc={jsDoc} campo={campo} testo={campo.tipo === "testo" ? testo : ""} />}
+
+        {campo.tipo === "testo" && (
+          <input ref={casella} className="campo-testo" value={testo} autoFocus enterKeyHint="next"
+            onChange={(e) => setTesto(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); avanti(); } }}
+            placeholder="Scrivi qui" />
+        )}
 
         {campo.tipo === "check" && (
           <div className="righe">
@@ -792,58 +928,76 @@ function FoglioCampo({campo, profili, attivo, firme, onChiudi, onAggiorna, onEli
         )}
 
         {campo.tipo === "scelta" && (
-          <div className="chips">
+          <div className="chips scorre">
             {(campo.opzioni || []).map((o) => (
               <button key={o} className={"chip" + (campo.valore === o ? " attivo" : "")}
-                onClick={() => { onAggiorna(campo.id, {valore: o}); onChiudi(); }}>{o}</button>
+                onClick={() => onAggiorna(campo.id, {valore: o})}>{o}</button>
             ))}
           </div>
         )}
 
-        {(campo.tipo === "testo" || campo.tipo === "firma") && (
+        {campo.tipo !== "check" && (
+          <div className="righe nav">
+            <button className="btn" onClick={indietro} aria-label="Campo precedente">‹</button>
+            <button className="btn" onClick={conferma}>Fatto</button>
+            <button className="btn primario" onClick={avanti}>Avanti ›</button>
+          </div>
+        )}
+
+        {campo.tipo === "testo" && profili.length > 1 && (
+          <>
+            <span className="etichetta">Persona</span>
+            <div className="chips scorre">
+              {profili.map((pr) => (
+                <button key={pr.id} className={"chip" + (idProfilo === pr.id ? " attivo" : "")}
+                  onClick={() => usaProfilo(pr.id)}>{pr.nome}</button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {campo.tipo === "testo" && (
+          <>
+            <span className="etichetta">Dati di {nomeProfilo || "questo profilo"} · i vuoti li imparo</span>
+            <div className="chips scorre">
+              {elenco.map((c) => {
+                const pieno = !!valoreAnagrafica(dati, c.chiave);
+                return (
+                  <button key={c.chiave}
+                    className={"chip" + (campo.chiave === c.chiave ? " attivo" : "") + (pieno ? "" : " vuoto")}
+                    onClick={() => usaChiave(c.chiave)}>{c.etichetta}</button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {(campo.tipo === "testo" || campo.tipo === "firma") && firme.length > 0 && (
+          <>
+            <span className="etichetta">Firme</span>
+            <div className="chips scorre">
+              {firme.map((f) => (
+                <button key={f.id} className={"chip" + (campo.firmaId === f.id ? " attivo" : "")}
+                  onClick={() => usaFirma(f.id)}>{f.nome}</button>
+              ))}
+              {campo.firmaId && <button className="chip" onClick={() => onAggiorna(campo.id, {firmaId: null})}>Togli</button>}
+            </div>
+          </>
+        )}
+
+        <button className="espandi" onClick={() => setAspetto((v) => !v)}>
+          {campo.tipo === "testo" ? "Aspetto, posizione, elimina" : "Posizione, elimina"} {aspetto ? "▾" : "▸"}
+        </button>
+        {aspetto && (
           <>
             {campo.tipo === "testo" && (
               <>
-                <input className="campo-testo" value={testo} autoFocus
-                  onChange={(e) => setTesto(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") conferma(); }}
-                  placeholder="Scrivi qui" />
-
-                {profili.length > 1 && (
-                  <>
-                    <span className="etichetta">Persona</span>
-                    <div className="chips">
-                      {profili.map((pr) => (
-                        <button key={pr.id} className={"chip" + (idProfilo === pr.id ? " attivo" : "")}
-                          onClick={() => usaProfilo(pr.id)}>{pr.nome}</button>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                <span className="etichetta">Dati di {nomeProfilo || "questo profilo"} — i vuoti li imparo da quello che scrivi</span>
-                <div className="chips">
-                  {elenco.map((c) => {
-                    const pieno = !!valoreAnagrafica(dati, c.chiave);
-                    return (
-                      <button key={c.chiave}
-                        className={"chip" + (campo.chiave === c.chiave ? " attivo" : "") + (pieno ? "" : " vuoto")}
-                        onClick={() => usaChiave(c.chiave)}>{c.etichetta}</button>
-                    );
-                  })}
-                </div>
-
-                <span className="etichetta">Aspetto e posizione</span>
                 <div className="opzioni">
                   <button className="mini" onClick={() => onAggiorna(campo.id, {corpo: (campo.corpo || 0) - 0.5})}>A−</button>
                   <button className="mini" onClick={() => onAggiorna(campo.id, {corpo: 0})}>
                     {(campo.corpo || 0) === 0 ? "auto" : (campo.corpo > 0 ? "+" : "") + campo.corpo}
                   </button>
                   <button className="mini" onClick={() => onAggiorna(campo.id, {corpo: (campo.corpo || 0) + 0.5})}>A+</button>
-                  <button className="mini" onClick={() => sposta(-2, 0)}>←</button>
-                  <button className="mini" onClick={() => sposta(2, 0)}>→</button>
-                  <button className="mini" onClick={() => sposta(0, 2)}>↑</button>
-                  <button className="mini" onClick={() => sposta(0, -2)}>↓</button>
                 </div>
                 <div className="chips">
                   {[["", "Normale"], ["alto", "MAIUSCOLO"], ["basso", "minuscolo"]].map(([v, e]) => (
@@ -853,25 +1007,17 @@ function FoglioCampo({campo, profili, attivo, firme, onChiudi, onAggiorna, onEli
                 </div>
               </>
             )}
-            {firme.length > 0 && (
-              <>
-                <span className="etichetta">Firme</span>
-                <div className="chips">
-                  {firme.map((f) => (
-                    <button key={f.id} className={"chip" + (campo.firmaId === f.id ? " attivo" : "")}
-                      onClick={() => usaFirma(f.id)}>{f.nome}</button>
-                  ))}
-                  {campo.firmaId && <button className="chip" onClick={() => onAggiorna(campo.id, {firmaId: null})}>Togli</button>}
-                </div>
-              </>
-            )}
+            <div className="opzioni">
+              <button className="mini" onClick={() => sposta(-2, 0)}>←</button>
+              <button className="mini" onClick={() => sposta(2, 0)}>→</button>
+              <button className="mini" onClick={() => sposta(0, 2)}>↑</button>
+              <button className="mini" onClick={() => sposta(0, -2)}>↓</button>
+            </div>
+            <div className="righe">
+              <button className="btn rosso" onClick={() => { onElimina(campo.id); onChiudi(); }}>Elimina campo</button>
+            </div>
           </>
         )}
-
-        <div className="righe">
-          <button className="btn rosso" onClick={() => { onElimina(campo.id); onChiudi(); }}>Elimina campo</button>
-          <button className="btn primario" onClick={conferma}>Fatto</button>
-        </div>
       </div>
     </>
   );
@@ -1008,6 +1154,24 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
   };
   const elimina = (id) => setCampi((p) => p.filter((c) => c.id !== id));
   const scegli = (id) => { setScelto(id); apriLivello(() => setScelto(null)); };
+
+  const navigabili = useMemo(() => ordineLettura(campi), [campi]);
+
+  const vai = (dir) => {
+    const dest = campoDestinazione(navigabili, scelto, dir);
+    if (!dest) {
+      toast(dir > 0 ? "Nessun altro campo vuoto" : "Sei al primo campo");
+      if (dir > 0) chiudiLivello();
+      return;
+    }
+    if (dest.pagina !== pagina) setPagina(dest.pagina);
+    setScelto(dest.id);
+  };
+
+  const posizione = scelto ? {
+    indice: navigabili.findIndex((c) => c.id === scelto) + 1,
+    totale: navigabili.length,
+  } : null;
   const nuovoCampo = (x, y) => {
     const c = {id: nuovoId(), pagina, x: x - 60, y: y - 6, w: 120, h: 13,
       tipo: "testo", nome: "", acro: false, valore: "", chiave: null, firmaId: null};
@@ -1181,9 +1345,10 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
       )}
 
       {campoScelto && (
-        <FoglioCampo campo={campoScelto} profili={profili} attivo={profiloDoc || attivo} firme={firme}
+        <FoglioCampo campo={campoScelto} jsDoc={jsDoc.current} posizione={posizione}
+          profili={profili} attivo={profiloDoc || attivo} firme={firme}
           onChiudi={chiudiLivello} onAggiorna={aggiorna} onElimina={elimina}
-          onImpara={onImpara} onProvincia={dividiProvincia} />
+          onImpara={onImpara} onProvincia={dividiProvincia} onVai={vai} />
       )}
     </div>
   );

@@ -40,6 +40,12 @@ Scrivendo `Paullo (MI)` in un campo comune o luogo di nascita, la sigla finisce 
 
 ## Pannello del campo
 
+In cima c'è un ritaglio ingrandito del modulo: il campo evidenziato in giallo più la zona attorno, così l'etichetta stampata si legge sia che stia a sinistra, sopra o sotto la riga. Il ritaglio viene renderizzato da pdf.js alla risoluzione giusta per il pannello, non ingrandendo l'immagine della pagina, e il testo che scrivi ci compare dentro mentre lo digiti.
+
+**Avanti** (o Invio sulla tastiera) salva e porta al prossimo campo vuoto, anche su un'altra pagina, saltando le caselle; arrivato in fondo riparte dall'inizio. **‹** torna al campo precedente anche se già compilato. Il contatore mostra la posizione nell'ordine di lettura.
+
+Dati e persone stanno su una riga scorrevole; aspetto, posizione ed eliminazione sono raccolti in una sezione richiudibile.
+
 Corpo del testo (A− / A+ rispetto al calcolo automatico), spostamento di 2pt nelle quattro direzioni, e scrittura normale, MAIUSCOLA o minuscola. Le scelte restano memorizzate con il modulo.
 
 ## Navigazione
