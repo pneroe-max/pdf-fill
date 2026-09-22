@@ -14,7 +14,7 @@ Il service worker mette in cache app e librerie al primo avvio. Pubblicando una 
 
 ## Come funziona
 
-**Moduli con campi (AcroForm).** `pdf-lib` elenca i campi con nome, tipo e rettangolo. Il nome viene confrontato con le regole in `REGOLE` e associato ai dati salvati: un campo chiamato `Codice Fiscale` si precompila da solo. All'uscita i campi vengono appiattiti, quindi il PDF non è più modificabile.
+**Moduli con campi (AcroForm).** `pdf-lib` elenca i campi con nome, tipo e rettangolo. Il nome interno viene confrontato con le regole in `REGOLE`, ma nei moduli della pubblica amministrazione è spesso inutile (`Testo1`, `Testo2`): allora si legge l'etichetta stampata accanto al campo dal livello testo, la stessa strada usata sui moduli piatti. "Il/La sottoscritto/a", "nato/a il", "residente a", "C.F.:", "prov.", "codice fiscale" vengono riconosciute così. All'uscita i campi vengono appiattiti, quindi il PDF non è più modificabile.
 
 **Moduli piatti o scansionati.** La pagina viene renderizzata su canvas e analizzata pixel per pixel:
 
@@ -31,6 +31,12 @@ Su un modulo con righe vettoriali (12 righe, 4 caselle) le trova tutte in circa 
 **Corpo del testo.** Si parte dal 72% dell'altezza del campo e si scende di 0,25pt finché il testo entra nella larghezza, con il minimo a 6pt.
 
 **Firme.** Disegnate su canvas, ritagliate sul tratto, salvate come PNG trasparente in IndexedDB. Inserite in un campo, vengono scalate mantenendo le proporzioni.
+
+## Aspetto
+
+Contenuti su carta bianca, barre di sopra e di sotto scure. La gerarchia viene dal peso del carattere e dallo spessore dei filetti: filetto pieno sotto il titolo, filetto medio sotto le intestazioni di sezione, filo sottile fra le righe di elenco. Niente schede con ombra.
+
+Il giallo evidenziatore ha un significato solo: **qui manca qualcosa da scrivere**. Un campo compilato perde il riempimento e tiene un contorno sottile, così si legge il valore.
 
 ## Profili
 
