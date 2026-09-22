@@ -175,6 +175,23 @@
     border-top:1px solid var(--riga);color:var(--matita);font-size:14px}
   .etichetta{display:block;font-size:13px;color:var(--matita);margin:16px 0 0}
 
+  /* vista a modulo: la frase del modulo, il buco, la casella */
+  .vista-modulo .gruppo{margin-top:26px}
+  .riga-campo{padding:16px 0 18px;border-bottom:1px solid var(--riga)}
+  .riga-campo:last-child{border-bottom:0}
+  .frase{margin:0 0 10px;font-size:15px;line-height:1.5;color:var(--inchiostro)}
+  .frase.muta{color:var(--matita);font-style:italic}
+  .frase .buco{
+    background:var(--evidenziatore);border-bottom:2px solid var(--ambra);
+    padding:0 6px;border-radius:2px;font-weight:700;letter-spacing:.05em;
+  }
+  .riga-campo .dato{display:block;font-size:12.5px;color:var(--matita);margin:-4px 0 8px}
+  .riga-campo .opzioni,.riga-campo .chips{margin-top:0}
+  .mini.acceso{background:var(--inchiostro);border-color:var(--inchiostro);color:#fff;font-weight:600}
+  .coda{display:flex;gap:16px;margin-top:9px}
+  .collega{font-size:12.5px;color:var(--matita);text-decoration:underline;text-underline-offset:3px}
+  .icona-btn.testo{width:auto;padding:0 12px;font-size:14px}
+
   /* firme */
   .tela{width:100%;height:210px;background:#fff;border:1.5px solid var(--inchiostro);
     border-radius:8px;touch-action:none;display:block}
@@ -341,6 +358,18 @@ const REGOLE = [
   ["data_oggi", /(\bdata\b|\bdate\b|\bl[iì]\b)/],
 ];
 
+const LETTERA = /[A-Za-z\u00C0-\u024F0-9]/;
+// la barra tiene unite le parole dei moduli: sottoscritto/a, nato/a
+function dentroParola(t, i) {
+  return LETTERA.test(t[i] || "") || (t[i] === "/" && LETTERA.test(t[i + 1] || ""));
+}
+
+// per la lettura tolgo solo i riempitivi grafici, le sigle restano intere: C.F.
+function pulisciFrase(t) {
+  return String(t || "").replace(/_+/g, " ").replace(/\.{2,}/g, " ")
+    .replace(/\u2026+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 // ripulisce l'etichetta dai riempitivi grafici prima del confronto
 function pulisciEtichetta(t) {
   return String(t || "").replace(/[_.\u2026]+/g, " ").replace(/\s+/g, " ").trim();
@@ -358,7 +387,7 @@ function etichetteVicine(campo, voci) {
       if (destra > campo.x + 8 && v.w > 0) {
         const fraz = Math.max(0, Math.min(1, (campo.x - v.x) / v.w));
         let i = Math.round(fraz * v.testo.length);
-        while (i < v.testo.length && /[A-Za-z\u00C0-\u024F0-9]/.test(v.testo[i])) i++;
+        while (i < v.testo.length && dentroParola(v.testo, i)) i++;
         parte = v.testo.slice(0, i);
       }
       const pulito = pulisciEtichetta(parte);
@@ -424,10 +453,39 @@ function geometriaRitaglio(campo, Wpt, Hpt, larghezzaCss, dpr) {
   };
 }
 
-// ordine di lettura: pagina, dall'alto in basso, da sinistra a destra; caselle escluse
-function ordineLettura(campi) {
-  return campi.filter((c) => c.tipo !== "check").sort((a, b) =>
+// ordine di lettura: pagina, dall'alto in basso, da sinistra a destra
+function ordinaCampi(campi) {
+  return campi.slice().sort((a, b) =>
     a.pagina - b.pagina || (Math.abs(a.y - b.y) > 4 ? b.y - a.y : a.x - b.x));
+}
+
+// per la navigazione Avanti le caselle restano fuori
+function ordineLettura(campi) {
+  return ordinaCampi(campi.filter((c) => c.tipo !== "check"));
+}
+
+// testo di una pagina nel formato usato per etichette e frasi
+async function vociPagina(jsDoc, num) {
+  const pag = await jsDoc.getPage(num + 1);
+  const tc = await pag.getTextContent();
+  return tc.items.filter((i) => i.str && i.str.trim())
+    .map((i) => ({testo: i.str, x: i.transform[4], y: i.transform[5], w: i.width || 0}));
+}
+
+// rilevamento fuori schermo, a scala fissa: non dipende piu' dallo schermo del telefono
+async function rilevaPagina(jsDoc, num) {
+  const pag = await jsDoc.getPage(num + 1);
+  const v1 = pag.getViewport({scale: 1});
+  const scala = Math.min(2, Math.max(1.1, 760 / v1.width));
+  const vp = pag.getViewport({scale: scala});
+  const tela = document.createElement("canvas");
+  tela.width = Math.floor(vp.width);
+  tela.height = Math.floor(vp.height);
+  const ctx = tela.getContext("2d", {willReadFrequently: true});
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, tela.width, tela.height);
+  await pag.render({canvasContext: ctx, viewport: vp}).promise;
+  return rilevaCampi(ctx, tela.width, tela.height, scala, v1.height).map((c) => ({...c, pagina: num}));
 }
 
 function campoVuoto(c) {
@@ -443,6 +501,83 @@ function campoDestinazione(navigabili, id, dir) {
       || navigabili.slice(0, Math.max(0, i)).find(campoVuoto) || null;
   }
   return i > 0 ? navigabili[i - 1] : null;
+}
+
+// le parole della pagina raggruppate in righe di testo
+function righeTesto(voci) {
+  const righe = [];
+  voci.slice().sort((a, b) => b.y - a.y || a.x - b.x).forEach((v) => {
+    const r = righe.find((x) => Math.abs(x.y - v.y) <= 2.5);
+    if (r) r.voci.push(v); else righe.push({y: v.y, voci: [v]});
+  });
+  righe.forEach((r) => r.voci.sort((a, b) => a.x - b.x));
+  return righe;
+}
+
+// una voce di testo che attraversa dei campi viene tagliata al confine di parola
+function spezzaVoce(v, campiRiga) {
+  const dentro = campiRiga.filter((c) => c.x > v.x + 2 && c.x < v.x + v.w - 2)
+    .sort((a, b) => a.x - b.x);
+  if (!dentro.length || !v.w) return [{testo: v.testo, x: v.x}];
+  const pezzi = [];
+  let da = 0, xPezzo = v.x;
+  dentro.forEach((c) => {
+    const fraz = Math.max(0, Math.min(1, (c.x - v.x) / v.w));
+    let i = Math.round(fraz * v.testo.length);
+    while (i < v.testo.length && dentroParola(v.testo, i)) i++;
+    pezzi.push({testo: v.testo.slice(da, i), x: xPezzo});
+    da = i;
+    xPezzo = c.x + c.w;
+  });
+  pezzi.push({testo: v.testo.slice(da), x: xPezzo});
+  return pezzi;
+}
+
+// la frase del modulo in cui cade il campo, divisa nei due lati del buco.
+// Gli altri campi della stessa riga diventano trattini, cosi' si vede la struttura.
+function fraseDelCampo(campo, righe, campiPagina, limite) {
+  const max = limite || 78;
+  const campiRiga = campiPagina.filter((c) =>
+    c === campo || (Math.abs(c.y - campo.y) <= 6 && c.tipo !== "check"));
+
+  const componi = (riga, sopra) => {
+    const elementi = [];
+    riga.voci.forEach((v) => spezzaVoce(v, sopra ? [] : campiRiga).forEach((pz) => {
+      const t = pulisciFrase(pz.testo);
+      if (t && !/^[()\[\],;:.\/-]+$/.test(t)) elementi.push({x: pz.x, testo: t});
+    }));
+    if (!elementi.length) return null;
+    if (!sopra) campiRiga.forEach((c) => elementi.push({x: c.x, campo: c}));
+    elementi.sort((a, b) => a.x - b.x);
+    const lati = [[], []];
+    let lato = sopra ? 1 : 0;
+    elementi.forEach((e) => {
+      if (e.campo === campo) { lato = 1; return; }
+      lati[sopra ? 0 : lato].push(e.campo ? "____" : e.testo);
+    });
+    let prima = lati[0].join(" ").replace(/\s+([,;:.])/g, "$1").trim();
+    let dopo = lati[1].join(" ").replace(/\s+([,;:.])/g, "$1").trim();
+    if (!prima && !dopo) return null;
+    if (prima.length > max) prima = "…" + prima.slice(prima.length - max).replace(/^\S*\s/, "");
+    if (dopo.length > max) dopo = dopo.slice(0, max).replace(/\s\S*$/, "") + "…";
+    return {prima, dopo, sopra};
+  };
+
+  // prima la riga su cui sta il campo
+  const suaRiga = righe.filter((r) => r.y >= campo.y - 4 && r.y <= campo.y + Math.max(campo.h, 9))
+    .sort((a, b) => Math.abs(a.y - campo.y) - Math.abs(b.y - campo.y));
+  for (const r of suaRiga) {
+    const f = componi(r, false);
+    if (f) return f;
+  }
+  // poi le righe sopra, dalla piu' vicina, fino a 45pt
+  const sopra = righe.filter((r) => r.y > campo.y + campo.h - 3 && r.y < campo.y + campo.h + 45)
+    .sort((a, b) => a.y - b.y);
+  for (const r of sopra) {
+    const f = componi(r, true);
+    if (f) return f;
+  }
+  return null;
 }
 
 // dal nome interno del campo non si capisce niente: deduco il dato dall'etichetta stampata
@@ -885,6 +1020,131 @@ function Ritaglio({jsDoc, campo, testo}) {
   return <div className="ritaglio"><canvas ref={tela} width="1" height="1" style={{height: 56}}></canvas></div>;
 }
 
+const TASTIERE = {
+  cap: {inputMode: "numeric"},
+  civico: {inputMode: "numeric"},
+  telefono: {type: "tel", inputMode: "tel"},
+  email: {type: "email", inputMode: "email", autoCapitalize: "off"},
+  pec: {type: "email", inputMode: "email", autoCapitalize: "off"},
+  cf: {autoCapitalize: "characters", spellCheck: false},
+  provincia: {maxLength: 2, autoCapitalize: "characters"},
+  data_nascita: {inputMode: "numeric", placeholder: "gg/mm/aaaa"},
+  data_oggi: {inputMode: "numeric", placeholder: "gg/mm/aaaa"},
+  doc_scadenza: {inputMode: "numeric", placeholder: "gg/mm/aaaa"},
+};
+
+const Riga = React.memo(function Riga({campo, frase, dato, firme, profili, nomePersona,
+                                       onCambia, onFine, onFoglio, onPersona}) {
+  const tasti = TASTIERE[campo.chiave] || {};
+  const etichetta = frase
+    ? <p className="frase">
+        {frase.prima}{frase.prima ? " " : ""}
+        <span className="buco">{campo.tipo === "check" ? "☐" : "▁▁▁"}</span>
+        {/^[,;:.)]/.test(frase.dopo) ? "" : " "}{frase.dopo}
+      </p>
+    : <p className="frase muta">Campo senza testo intorno</p>;
+
+  return (
+    <div className={"riga-campo" + (campo.chiave ? " nota" : "")}>
+      {etichetta}
+      {dato && <span className="dato">{dato}</span>}
+
+      {campo.tipo === "testo" && (
+        <input className="campo-testo" value={String(campo.valore || "")} enterKeyHint="next"
+          placeholder={tasti.placeholder || "Scrivi qui"} {...tasti}
+          style={campo.chiave === "cf" || campo.chiave === "provincia" ? {textTransform: "uppercase"} : null}
+          onChange={(e) => onCambia(campo.id, e.target.value)}
+          onBlur={() => onFine(campo)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            const tutti = Array.from(document.querySelectorAll(".vista-modulo input"));
+            const i = tutti.indexOf(e.target);
+            if (i >= 0 && tutti[i + 1]) tutti[i + 1].focus(); else e.target.blur();
+          }} />
+      )}
+
+      {campo.tipo === "check" && (
+        <div className="opzioni">
+          <button className={"mini" + (campo.valore ? " acceso" : "")}
+            onClick={() => onCambia(campo.id, !campo.valore)}>{campo.valore ? "✕ spuntata" : "vuota"}</button>
+        </div>
+      )}
+
+      {campo.tipo === "scelta" && (
+        <div className="chips scorre">
+          {(campo.opzioni || []).map((o) => (
+            <button key={o} className={"chip" + (campo.valore === o ? " attivo" : "")}
+              onClick={() => onCambia(campo.id, o)}>{o}</button>
+          ))}
+        </div>
+      )}
+
+      {campo.tipo === "firma" && (
+        <div className="chips scorre">
+          {firme.length === 0 && <span className="etichetta">Nessuna firma salvata</span>}
+          {firme.map((f) => (
+            <button key={f.id} className={"chip" + (campo.firmaId === f.id ? " attivo" : "")}
+              onClick={() => onCambia(campo.id, f.id, "firma")}>{f.nome}</button>
+          ))}
+          {campo.firmaId && <button className="chip" onClick={() => onCambia(campo.id, null, "firma")}>Togli</button>}
+        </div>
+      )}
+
+      <div className="coda">
+        {profili.length > 1 &&
+          <button className="collega" onClick={() => onPersona(campo)}>{nomePersona}</button>}
+        <button className="collega" onClick={() => onFoglio(campo)}>vedi sul foglio</button>
+      </div>
+    </div>
+  );
+});
+
+function VistaModulo({campi, righePagina, profili, attivo, firme,
+                      onCambia, onFine, onFoglio, onPersona}) {
+  const ordinati = useMemo(() => ordinaCampi(campi), [campi]);
+  const pagine = [];
+  ordinati.forEach((c) => {
+    const ultima = pagine[pagine.length - 1];
+    if (ultima && ultima.num === c.pagina) ultima.campi.push(c);
+    else pagine.push({num: c.pagina, campi: [c]});
+  });
+
+  // le frasi dipendono solo dalla posizione dei campi: le ricalcolo se quella cambia
+  const geometria = ordinati.map((c) => c.id + ":" + Math.round(c.x) + ":" + Math.round(c.y)).join("|");
+  const frasi = useMemo(() => {
+    const mappa = new Map();
+    pagine.forEach((p) => {
+      const righe = righePagina(p.num);
+      if (!righe) return;
+      p.campi.forEach((c) => mappa.set(c.id, fraseDelCampo(c, righe, p.campi)));
+    });
+    return mappa;
+  }, [geometria]);
+
+  return (
+    <div className="corpo vista-modulo">
+      {pagine.length === 0 &&
+        <p className="sommario">Nessun campo trovato. Passa al foglio e aggiungili con ＋.</p>}
+      {pagine.map((p) => (
+        <div key={p.num} className="gruppo">
+          <h2>Pagina {p.num + 1}</h2>
+          {p.campi.map((c) => {
+            const frase = frasi.get(c.id) || null;
+            const noto = CAMPI_ANAGRAFICA.find((x) => x.chiave === c.chiave);
+            const persona = profili.find((x) => x.id === (c.profilo || attivo));
+            return (
+              <Riga key={c.id} campo={c} frase={frase} dato={noto ? noto.etichetta : ""}
+                firme={firme} profili={profili} nomePersona={(persona || {}).nome || ""}
+                onCambia={onCambia} onFine={onFine} onFoglio={onFoglio} onPersona={onPersona} />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FoglioCampo({campo, jsDoc, posizione, profili, attivo, firme,
                       onChiudi, onAggiorna, onElimina, onImpara, onProvincia, onVai}) {
   const [testo, setTesto] = useState(campo.tipo === "check" ? "" : String(campo.valore || ""));
@@ -1080,6 +1340,11 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
   const [scelto, setScelto] = useState(null);
   const [modoAgg, setModoAgg] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [vista, setVista] = useState("modulo");
+  const [progresso, setProgresso] = useState("");
+  const [personaPer, setPersonaPer] = useState(null);
+  const testi = useRef({});
+  const righeCache = useRef({});
   const bytes = useRef(null);
   const jsDoc = useRef(null);
   const impronta = useRef("");
@@ -1127,7 +1392,37 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
           return c;
         });
         lista.forEach((c) => { if (c.acro) pagineAcro.current.add(c.pagina); });
+        const persona = profiloDoc || attivo;
+
+        if (pagineAcro.current.size) {
+          // modulo con campi veri: leggo il testo di tutte le pagine che ne hanno
+          for (const num of Array.from(pagineAcro.current).sort((a, b) => a - b)) {
+            if (!vivo) return;
+            testi.current[num] = await vociPagina(doc, num);
+            rilevate.current.add(num);
+            const miei = lista.filter((c) => c.pagina === num);
+            arricchisciDaEtichette(miei, testi.current[num], dati, persona);
+          }
+        } else if (!daLayout.current) {
+          // modulo piatto: rilevo tutte le pagine subito, cosi' la vista a modulo e' completa
+          const quante = Math.min(doc.numPages, 12);
+          for (let num = 0; num < quante; num++) {
+            if (!vivo) return;
+            setProgresso("Leggo la pagina " + (num + 1) + " di " + quante);
+            testi.current[num] = await vociPagina(doc, num);
+            const trovati = await rilevaPagina(doc, num);
+            arricchisciDaEtichette(trovati, testi.current[num], dati, persona);
+            lista = lista.concat(trovati);
+            rilevate.current.add(num);
+          }
+        } else {
+          for (const num of new Set(lista.map((c) => c.pagina))) {
+            if (!vivo) return;
+            testi.current[num] = await vociPagina(doc, num);
+          }
+        }
         if (!vivo) return;
+        setProgresso("");
         setCampi(lista);
         setStato("pronto");
         if (profili.length > 1) {
@@ -1212,6 +1507,48 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
     }
     if (dest.pagina !== pagina) setPagina(dest.pagina);
     setScelto(dest.id);
+  };
+
+  const righePagina = useCallback((num) => {
+    if (righeCache.current[num]) return righeCache.current[num];
+    const voci = testi.current[num];
+    if (!voci || !voci.length) return null;
+    righeCache.current[num] = righeTesto(voci);
+    return righeCache.current[num];
+  }, []);
+
+  const cambiaValore = useCallback((id, valore, tipo) => {
+    setCampi((p) => p.map((c) => (c.id === id
+      ? (tipo === "firma" ? {...c, firmaId: valore} : {...c, valore}) : c)));
+  }, []);
+
+  // a fine casella: imparo il dato e separo l'eventuale provincia
+  const fineCasella = useCallback((campo) => {
+    const idProfilo = campo.profilo || profiloDoc || attivo;
+    const suoi = datiDiProfilo(profili, idProfilo);
+    const testo = String(campo.valore || "").trim();
+    if (!testo) return;
+    const m = /^(.+?)\s*\(\s*([A-Za-z]{2})\s*\)\s*$/.exec(testo);
+    if (m && (campo.chiave === "citta" || campo.chiave === "luogo_nascita")) {
+      setCampi((p) => p.map((c) => (c.id === campo.id ? {...c, valore: m[1].trim()} : c)));
+      dividiProvincia(campo, m[2].toUpperCase(), idProfilo);
+      return;
+    }
+    if (campo.chiave && campo.chiave !== "data_oggi" && !suoi[campo.chiave]) {
+      onImpara(campo.chiave, testo, idProfilo);
+    }
+  }, [profili, profiloDoc, attivo]);
+
+  const vaiAlFoglio = useCallback((campo) => {
+    setVista("foglio");
+    setPagina(campo.pagina);
+    scegli(campo.id);
+  }, []);
+
+  const apriPersona = (campo) => {
+    setPersonaPer(campo ? campo.id : "documento");
+    setSceltaPersona(true);
+    apriLivello(() => { setSceltaPersona(false); setPersonaPer(null); });
   };
 
   const posizione = scelto ? {
@@ -1327,7 +1664,8 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
   }
 
   if (stato === "carico") return (
-    <div className="carico"><div className="barra"><i></i></div><div>Apro il modulo</div></div>
+    <div className="carico"><div className="barra"><i></i></div>
+      <div>{progresso || "Apro il modulo"}</div></div>
   );
   if (stato === "errore") return (
     <div className="colonna">
@@ -1338,35 +1676,55 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
 
   const campoScelto = campi.find((c) => c.id === scelto) || null;
   const diPagina = campi.filter((c) => c.pagina === pagina);
-  const compilati = diPagina.filter((c) => c.firmaId || (c.tipo === "check" ? c.valore : !!c.valore)).length;
+  const pieno = (c) => c.firmaId || (c.tipo === "check" ? c.valore : !!String(c.valore || "").trim());
+  const compilati = (vista === "modulo" ? campi : diPagina).filter(pieno).length;
+  const totali = (vista === "modulo" ? campi : diPagina).length;
+  const daFare = campi.filter((c) => c.tipo !== "check" && !pieno(c)).length;
 
   return (
     <div className="colonna">
       <div className="testa">
         <button className="icona-btn" onClick={onEsci}>‹</button>
-        <h1>{file.name}<span className="sotto">{compilati} di {diPagina.length} campi</span></h1>
+        <h1>{file.name}<span className="sotto">
+          {compilati} di {totali} campi{vista === "foglio" ? " in questa pagina" : ""}</span></h1>
         <button className="icona-btn" title="Persona" style={{fontSize: 13}}
-          onClick={() => { setSceltaPersona(true); apriLivello(() => setSceltaPersona(false)); }}>
+          onClick={() => apriPersona(null)}>
           {((profili.find((p) => p.id === (profiloDoc || attivo)) || {}).nome || "?").slice(0, 2)}
         </button>
-        <button className={"icona-btn" + (modoAgg ? " acceso" : "")}
-          onClick={() => setModoAgg((v) => !v)} title="Aggiungi campo">＋</button>
+        <button className="icona-btn testo" onClick={() => { setModoAgg(false); setVista((v) => v === "modulo" ? "foglio" : "modulo"); }}>
+          {vista === "modulo" ? "Foglio" : "Modulo"}
+        </button>
+        {vista === "foglio" &&
+          <button className={"icona-btn" + (modoAgg ? " acceso" : "")}
+            onClick={() => setModoAgg((v) => !v)} title="Aggiungi campo">＋</button>}
       </div>
 
-      <div className="scena">
-        {jsDoc.current && (
-          <Pagina key={pagina} jsDoc={jsDoc.current} numero={pagina} campi={diPagina}
-            scelto={scelto} onScegli={scegli} onSposta={aggiorna} onNuovo={nuovoCampo}
-            modoAgg={modoAgg} firme={firme} onPronta={paginaPronta} />
-        )}
-      </div>
+      {vista === "modulo" ? (
+        <VistaModulo campi={campi} righePagina={righePagina} profili={profili}
+          attivo={profiloDoc || attivo} firme={firme} onCambia={cambiaValore}
+          onFine={fineCasella} onFoglio={vaiAlFoglio} onPersona={apriPersona} />
+      ) : (
+        <div className="scena">
+          {jsDoc.current && (
+            <Pagina key={pagina} jsDoc={jsDoc.current} numero={pagina} campi={diPagina}
+              scelto={scelto} onScegli={scegli} onSposta={aggiorna} onNuovo={nuovoCampo}
+              modoAgg={modoAgg} firme={firme} onPronta={paginaPronta} />
+          )}
+        </div>
+      )}
 
       <div className="piedi">
-        <button className="icona-btn" disabled={pagina === 0}
-          onClick={() => { setScelto(null); setPagina((p) => p - 1); }}>‹</button>
-        <span className="conta">Pagina {pagina + 1} di {nPagine}</span>
-        <button className="icona-btn" disabled={pagina >= nPagine - 1}
-          onClick={() => { setScelto(null); setPagina((p) => p + 1); }}>›</button>
+        {vista === "foglio" ? (
+          <>
+            <button className="icona-btn" disabled={pagina === 0}
+              onClick={() => { setScelto(null); setPagina((p) => p - 1); }}>‹</button>
+            <span className="conta">Pagina {pagina + 1} di {nPagine}</span>
+            <button className="icona-btn" disabled={pagina >= nPagine - 1}
+              onClick={() => { setScelto(null); setPagina((p) => p + 1); }}>›</button>
+          </>
+        ) : (
+          <span className="conta">{daFare === 0 ? "Tutto compilato" : daFare + " da riempire"}</span>
+        )}
         <button className="salva" disabled={salvando} onClick={salva}>{salvando ? "Salvo…" : "Salva PDF"}</button>
       </div>
 
@@ -1375,11 +1733,23 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
           <div className="velo" onClick={chiudiLivello}></div>
           <div className="sheet">
             <h3>Chi stai compilando?</h3>
-            <p className="nomecampo">Vale per tutto il modulo. Nel singolo campo puoi cambiarla.</p>
+            <p className="nomecampo">{personaPer && personaPer !== "documento"
+              ? "Vale solo per questo campo." : "Vale per tutto il modulo."}</p>
             <div className="chips">
               {profili.map((pr) => (
-                <button key={pr.id} className={"chip" + ((profiloDoc || attivo) === pr.id ? " attivo" : "")}
-                  onClick={() => { setProfiloDoc(pr.id); onAttiva(pr.id); chiudiLivello(); }}>{pr.nome}</button>
+                <button key={pr.id}
+                  className={"chip" + ((personaPer && personaPer !== "documento"
+                    ? (campi.find((c) => c.id === personaPer) || {}).profilo === pr.id
+                    : (profiloDoc || attivo) === pr.id) ? " attivo" : "")}
+                  onClick={() => {
+                    if (personaPer && personaPer !== "documento") {
+                      const suoi = datiDiProfilo(profili, pr.id);
+                      setCampi((p) => p.map((c) => (c.id === personaPer
+                        ? {...c, profilo: pr.id, valore: (c.chiave && valoreAnagrafica(suoi, c.chiave)) || c.valore}
+                        : c)));
+                    } else { setProfiloDoc(pr.id); onAttiva(pr.id); }
+                    chiudiLivello();
+                  }}>{pr.nome}</button>
               ))}
             </div>
             <div className="righe">

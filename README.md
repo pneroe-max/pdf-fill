@@ -44,6 +44,18 @@ Ogni persona ha il suo profilo con i suoi dati. Il profilo attivo precompila i m
 
 Scrivendo `Paullo (MI)` in un campo comune o luogo di nascita, la sigla finisce nel campo provincia accanto e viene imparata. Un campo corto subito dopo un comune viene riconosciuto da solo come provincia.
 
+## Vista a modulo
+
+All'apertura il PDF diventa un elenco di caselle raggruppate per pagina. Sopra ogni casella c'è la frase del modulo con il buco evidenziato in giallo:
+
+> residente a ____ in Via ____ n. ____ C.F.: **▁▁▁**
+
+La frase si ricostruisce dal livello testo: le parole della pagina vengono raggruppate per riga, le voci che attraversano un campo vengono tagliate al confine di parola, e gli altri campi della stessa riga diventano trattini. Se sulla riga non c'è testo si risale alle righe sopra fino a 45pt, così "Luogo e data" e "Firma" trovano comunque la loro etichetta. Sulle scansioni il livello testo è vuoto e la casella resta senza frase.
+
+Ogni tipo di dato apre la tastiera giusta: numerica per CAP e civico, telefono, email, maiuscole per il codice fiscale. Invio passa alla casella successiva. `vedi sul foglio` porta al campo sulla pagina vera, dove si può spostare o cancellare; l'interruttore **Modulo / Foglio** in alto fa la stessa cosa a mano.
+
+Sui moduli piatti tutte le pagine (fino a 12) vengono analizzate all'apertura, fuori schermo e a scala fissa: il rilevamento non dipende più dalla larghezza dello schermo, e l'elenco è completo dal primo momento.
+
 ## Pannello del campo
 
 In cima c'è un ritaglio ingrandito del modulo: il campo evidenziato in giallo più la zona attorno, così l'etichetta stampata si legge sia che stia a sinistra, sopra o sotto la riga. Il ritaglio viene renderizzato da pdf.js alla risoluzione giusta per il pannello, non ingrandendo l'immagine della pagina, e il testo che scrivi ci compare dentro mentre lo digiti.
