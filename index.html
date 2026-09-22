@@ -850,6 +850,109 @@ function rilevaCampi(ctx, W, H, scala, altPag) {
   return campi;
 }
 
+// Scrive i valori nel PDF originale.
+// modo "campi": riempie i campi veri del modulo e li appiattisce.
+// modo "disegno": toglie i campi e scrive i valori direttamente sulla pagina.
+async function componiPdf(bytes, campi, firme, modo) {
+  const doc = await PDFDocument.load(bytes, {ignoreEncryption: true});
+  const helv = await doc.embedFont(StandardFonts.Helvetica);
+  const pagine = doc.getPages();
+  const esito = {modo, appiattito: true, xfa: false, scritti: 0};
+
+  // un livello XFA fa ignorare ai lettori i valori dei campi AcroForm: lo tolgo
+  try {
+    const acro = doc.catalog.lookup(PL.PDFName.of("AcroForm"), PL.PDFDict);
+    if (acro && acro.has(PL.PDFName.of("XFA"))) {
+      acro.delete(PL.PDFName.of("XFA"));
+      esito.xfa = true;
+    }
+  } catch (e) { /* nessun AcroForm */ }
+
+  let form = null;
+  if (modo === "campi") {
+    try { form = doc.getForm(); } catch (e) { form = null; }
+  } else {
+    // niente campi: tolgo le caselle del modulo, altrimenti coprono quello che scrivo
+    pagine.forEach((p) => {
+      try { p.node.set(PL.PDFName.of("Annots"), doc.context.obj([])); } catch (e) {}
+    });
+    try { doc.catalog.delete(PL.PDFName.of("AcroForm")); } catch (e) {}
+  }
+
+  if (form) {
+    campi.filter((c) => c.acro && !c.firmaId).forEach((c) => {
+      try {
+        const f = form.getField(c.nome);
+        if (c.tipo === "testo" && String(c.valore || "").trim()) {
+          const t = sicuro(testoFinale(c));
+          f.setText(t);
+          f.setFontSize(Math.max(5, corpoAdatto(t, c.w, c.h, helv, 12) + (c.corpo || 0)));
+          esito.scritti++;
+        } else if (c.tipo === "check") {
+          c.valore ? f.check() : f.uncheck();
+        } else if (c.tipo === "scelta" && c.valore) {
+          f.select(c.valore);
+        }
+      } catch (e) { console.warn("campo", c.nome, e); }
+    });
+    try { form.flatten(); } catch (e) { esito.appiattito = false; console.warn(e); }
+  }
+
+  const cacheFirme = {};
+  for (const c of campi) {
+    const pag = pagine[c.pagina];
+    if (!pag) continue;
+
+    if (c.firmaId) {
+      const f = firme.find((x) => x.id === c.firmaId);
+      if (!f) continue;
+      if (!cacheFirme[c.firmaId]) cacheFirme[c.firmaId] = await doc.embedPng(f.png);
+      const img = cacheFirme[c.firmaId];
+      const k = Math.min(c.w / img.width, (c.h * 2.4) / img.height);
+      const lw = img.width * k, lh = img.height * k;
+      pag.drawImage(img, {x: c.x + (c.w - lw) / 2, y: c.y - lh * 0.15, width: lw, height: lh});
+      esito.scritti++;
+      continue;
+    }
+    if (c.acro && modo === "campi") continue; // gia' scritto come campo del modulo
+
+    if (c.tipo === "check") {
+      if (!c.valore) continue;
+      const m = Math.min(c.w, c.h) * 0.22;
+      const o = {thickness: 1.2, color: rgb(0.06, 0.14, 0.24)};
+      pag.drawLine({start: {x: c.x + m, y: c.y + m}, end: {x: c.x + c.w - m, y: c.y + c.h - m}, ...o});
+      pag.drawLine({start: {x: c.x + m, y: c.y + c.h - m}, end: {x: c.x + c.w - m, y: c.y + m}, ...o});
+      esito.scritti++;
+      continue;
+    }
+    const t = sicuro(testoFinale(c));
+    if (!t) continue;
+    const corpo = Math.max(5, corpoAdatto(t, c.w, c.h, helv, 12) + (c.corpo || 0));
+    const base = c.y + Math.max(1.5, (c.h - corpo) * 0.4);
+    pag.drawText(t, {x: c.x + 1.5, y: base, size: corpo, font: helv, color: rgb(0.06, 0.14, 0.24)});
+    esito.scritti++;
+  }
+
+  esito.bytes = await doc.save();
+  return esito;
+}
+
+// riapre il PDF prodotto e controlla che i valori ci siano davvero
+async function valoriMancanti(bytes, campi, leggiTesto) {
+  const attesi = campi.filter((c) => c.tipo === "testo" && String(c.valore || "").trim());
+  if (!attesi.length) return [];
+  const perPagina = {};
+  for (const c of attesi) {
+    if (!perPagina[c.pagina]) perPagina[c.pagina] = await leggiTesto(bytes, c.pagina);
+  }
+  const senzaSpazi = (t) => String(t).replace(/\s+/g, "").toLowerCase();
+  return attesi.filter((c) => {
+    const atteso = senzaSpazi(sicuro(testoFinale(c)));
+    if (atteso.length < 3) return false;
+    return senzaSpazi(perPagina[c.pagina] || "").indexOf(atteso) < 0;
+  });
+}
+
 /* ============================ schermata: pagina PDF ============================ */
 
 function Pagina({jsDoc, numero, campi, scelto, onScegli, onSposta, onNuovo, modoAgg, firme, onPronta}) {
@@ -1566,71 +1669,37 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
   async function salva() {
     setSalvando(true);
     try {
-      const doc = await PDFDocument.load(bytes.current.slice(0), {ignoreEncryption: true});
-      const helv = await doc.embedFont(StandardFonts.Helvetica);
-      const pagine = doc.getPages();
-      let form = null;
-      try { form = doc.getForm(); } catch (e) { form = null; }
+      let esito = await componiPdf(bytes.current.slice(0), campi, firme, "campi");
+      let ripiego = "";
 
-      // 1. campi del modulo
-      if (form) {
-        campi.filter((c) => c.acro && !c.firmaId).forEach((c) => {
-          try {
-            const f = form.getField(c.nome);
-            if (c.tipo === "testo" && String(c.valore || "")) {
-              const t = sicuro(testoFinale(c));
-              f.setText(t);
-              f.setFontSize(Math.max(5, corpoAdatto(t, c.w, c.h, helv, 12) + (c.corpo || 0)));
-            } else if (c.tipo === "check") {
-              c.valore ? f.check() : f.uncheck();
-            } else if (c.tipo === "scelta" && c.valore) {
-              f.select(c.valore);
-            }
-          } catch (e) { console.warn("campo", c.nome, e); }
-        });
+      // controllo che i valori ci siano davvero nel file prodotto: certi moduli
+      // accettano la scrittura nei campi ma poi non la mostrano
+      const daVerificare = campi.filter((c) =>
+        c.acro && c.tipo === "testo" && String(c.valore || "").trim());
+      if (daVerificare.length) {
+        let verifica = null;
+        try {
+          const leggi = async (b, num) => {
+            if (!verifica) verifica = await pdfjsLib.getDocument({data: new Uint8Array(b)}).promise;
+            const pag = await verifica.getPage(num + 1);
+            const tc = await pag.getTextContent();
+            return tc.items.map((i) => i.str).join(" ");
+          };
+          const mancanti = esito.appiattito
+            ? await valoriMancanti(esito.bytes, campi, leggi)
+            : daVerificare;
+          if (mancanti.length) {
+            ripiego = mancanti.length + " campi del modulo non tenevano il valore: scritti sopra";
+            esito = await componiPdf(bytes.current.slice(0), campi, firme, "disegno");
+          }
+        } catch (e) { console.warn("verifica", e); }
+        finally { if (verifica) { try { verifica.destroy(); } catch (e) {} } }
       }
 
-      let appiattito = true;
-      if (form) { try { form.flatten(); } catch (e) { appiattito = false; console.warn(e); } }
-
-      // 2. testo dei campi rilevati/aggiunti
-      const cacheFirme = {};
-      for (const c of campi) {
-        const pag = pagine[c.pagina];
-        if (!pag) continue;
-
-        if (c.firmaId) {
-          const f = firme.find((x) => x.id === c.firmaId);
-          if (!f) continue;
-          if (!cacheFirme[c.firmaId]) cacheFirme[c.firmaId] = await doc.embedPng(f.png);
-          const img = cacheFirme[c.firmaId];
-          const k = Math.min(c.w / img.width, (c.h * 2.4) / img.height);
-          const lw = img.width * k, lh = img.height * k;
-          pag.drawImage(img, {x: c.x + (c.w - lw) / 2, y: c.y - lh * 0.15, width: lw, height: lh});
-          continue;
-        }
-        if (c.acro) continue; // già scritti come campi modulo
-
-        if (c.tipo === "check") {
-          if (!c.valore) continue;
-          const m = Math.min(c.w, c.h) * 0.22;
-          const o = {thickness: 1.2, color: rgb(0.06, 0.14, 0.24)};
-          pag.drawLine({start: {x: c.x + m, y: c.y + m}, end: {x: c.x + c.w - m, y: c.y + c.h - m}, ...o});
-          pag.drawLine({start: {x: c.x + m, y: c.y + c.h - m}, end: {x: c.x + c.w - m, y: c.y + m}, ...o});
-          continue;
-        }
-        const t = sicuro(testoFinale(c));
-        if (!t) continue;
-        const corpo = Math.max(5, corpoAdatto(t, c.w, c.h, helv, 12) + (c.corpo || 0));
-        const base = c.y + Math.max(1.5, (c.h - corpo) * 0.4);
-        pag.drawText(t, {x: c.x + 1.5, y: base, size: corpo, font: helv, color: rgb(0.06, 0.14, 0.24)});
-      }
-
-      const out = await doc.save();
       const nome = file.name.replace(/\.pdf$/i, "") + "_compilato.pdf";
-      const blob = new Blob([out], {type: "application/pdf"});
+      const blob = new Blob([esito.bytes], {type: "application/pdf"});
 
-      // 3. memorizzo posizioni e associazioni, non i valori
+      // memorizzo posizioni e associazioni, non i valori
       try {
         await idbSalva("layout", {
           impronta: impronta.current, nome: file.name, aggiornato: Date.now(),
@@ -1648,7 +1717,7 @@ function Editor({file, profili, attivo, firme, onEsci, toast, onImpara, onAttiva
         catch (e) { if (e.name !== "AbortError") scarica(blob, nome); }
       } else scarica(blob, nome);
 
-      toast(appiattito ? "PDF compilato" : "Salvato, ma i campi del modulo restano modificabili");
+      toast(ripiego || (esito.scritti + (esito.scritti === 1 ? " valore scritto" : " valori scritti")));
     } catch (e) {
       console.error(e);
       toast("Salvataggio non riuscito: " + e.message);

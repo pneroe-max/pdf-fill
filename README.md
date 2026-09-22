@@ -70,6 +70,14 @@ Corpo del testo (A− / A+ rispetto al calcolo automatico), spostamento di 2pt n
 
 Il gesto indietro di Android chiude un livello alla volta: pannello, poi modulo, poi schermata. La ricarica trascinando dall'alto è disattivata.
 
+## Salvataggio verificato
+
+Il file viene scritto due volte se serve. Primo tentativo: i valori vanno nei campi veri del modulo, che poi vengono appiattiti. Poi il PDF prodotto viene **riaperto e controllato**: se un valore non compare nel testo della pagina, il file si rifà scrivendo i valori direttamente sopra e togliendo i campi. Capita con i moduli che hanno un livello XFA o campi che non accettano la scrittura: l'app li mostra pieni ma il lettore li vede vuoti.
+
+Il livello XFA, quando c'è, viene rimosso: è lui a far ignorare ai lettori i valori dei campi AcroForm.
+
+Il messaggio dopo il salvataggio dice quanti valori sono stati scritti, così un file vuoto si riconosce subito.
+
 ## Archivio locale (IndexedDB `pdffill`)
 
 | store | contenuto |
